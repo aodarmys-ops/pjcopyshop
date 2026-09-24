@@ -89,8 +89,8 @@
         <!-- Tables -->
         <div class="row g-4">
             <!-- Itemized Sales Tables -->
-            <div class="col-md-6">
-                <div class="glass-card mb-4 border-warning border-start border-5">
+            <div class="col-md-6 d-flex flex-column">
+                <div class="glass-card h-100 d-flex flex-column">
                     
                     <h5 class="fw-bold mb-3 text-warning text-dark">🥤 สรุปยอดขายเครื่องดื่มชง</h5>
                     <div class="table-responsive mb-4">
@@ -131,8 +131,8 @@
             </div>
 
             <!-- Recent Sales Table -->
-            <div class="col-md-6">
-                <div class="glass-card">
+            <div class="col-md-6 d-flex flex-column">
+                <div class="glass-card h-100 d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold m-0" id="salesTableTitle">ประวัติการขายล่าสุด</h5>
                         <select id="salesPageSize" class="form-select form-select-sm w-auto" onchange="changeSalesPageSize()">
@@ -142,7 +142,7 @@
                             <option value="100">แสดง 100 รายการ</option>
                         </select>
                     </div>
-                    <div class="table-responsive">
+                    <div class="table-responsive flex-grow-1" style="max-height: none; min-height: 400px;">
                         <table class="table table-hover align-middle">
                             <thead class="table-light">
                                 <tr>
