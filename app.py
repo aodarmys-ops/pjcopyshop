@@ -70,6 +70,28 @@ def init_db():
             FOREIGN KEY(product_id) REFERENCES Products_Services(id)
         )
     ''')
+    # Purchases
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Purchases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_name TEXT,
+            subtotal REAL NOT NULL,
+            vat_amount REAL DEFAULT 0,
+            total_amount REAL NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Purchase_Items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            purchase_id INTEGER,
+            product_id INTEGER,
+            qty INTEGER NOT NULL,
+            cost_price REAL NOT NULL,
+            FOREIGN KEY(purchase_id) REFERENCES Purchases(id),
+            FOREIGN KEY(product_id) REFERENCES Products_Services(id)
+        )
+    ''')
     # Job Orders
     c.execute('''
         CREATE TABLE IF NOT EXISTS Job_Orders (
@@ -112,6 +134,10 @@ def inventory():
 @app.route('/print-barcodes')
 def print_barcodes():
     return render_template('print_barcodes.html')
+
+@app.route('/purchases')
+def purchases():
+    return render_template('purchases.html')
 
 @app.route('/pos')
 def pos():
@@ -259,6 +285,52 @@ def checkout_sale():
     conn.commit()
     conn.close()
     return jsonify({"message": "Sale completed successfully", "sale_id": sale_id}), 201
+
+# --- Purchasing / Procurement ---
+@app.route('/api/purchases', methods=['POST'])
+def add_purchase():
+    data = request.get_json()
+    supplier_name = data.get('supplier_name', 'ไม่ระบุ')
+    has_vat = data.get('has_vat', False)
+    items = data.get('items', [])
+
+    if not items:
+        return jsonify({"message": "No items in purchase"}), 400
+
+    subtotal = sum(item['qty'] * item['cost'] for item in items)
+    vat_amount = subtotal * 0.07 if has_vat else 0.0
+    total_amount = subtotal + vat_amount
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # 1. Insert Purchase
+    c.execute('''
+        INSERT INTO Purchases (supplier_name, subtotal, vat_amount, total_amount) 
+        VALUES (?, ?, ?, ?)
+    ''', (supplier_name, subtotal, vat_amount, total_amount))
+    purchase_id = c.lastrowid
+
+    # 2. Insert Items & Update Stock & Cost
+    for item in items:
+        product_id = item['id']
+        qty = item['qty']
+        cost = item['cost']
+        
+        c.execute('INSERT INTO Purchase_Items (purchase_id, product_id, qty, cost_price) VALUES (?, ?, ?, ?)',
+                  (purchase_id, product_id, qty, cost))
+        
+        # Add stock and optionally update the cost to the latest purchase cost
+        c.execute('UPDATE Products_Services SET stock_qty = stock_qty + ?, cost = ? WHERE id = ?',
+                  (qty, cost, product_id))
+
+    # 3. Add to Expenses automatically
+    expense_desc = f"สั่งซื้อสินค้าเข้าสต๊อก (PO #{purchase_id}) - {supplier_name}"
+    c.execute('INSERT INTO Expenses (description, amount) VALUES (?, ?)', (expense_desc, total_amount))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Purchase completed", "purchase_id": purchase_id}), 201
 
 # --- Phase 3: Job Orders ---
 @app.route('/api/jobs', methods=['GET'])

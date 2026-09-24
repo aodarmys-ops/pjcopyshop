@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchases (สั่งซื้อ/รับเข้าสินค้า)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 20px; height: 100%; display: flex; flex-direction: column;}
+        .total-box { background: linear-gradient(135deg, #1e3c72, #2a5298); border-radius: 15px; padding: 20px; text-align: center; color: white;}
+        #barcodeInput { font-size: 1.2rem; padding: 15px; border-radius: 15px; border: 2px solid #e0e6ed; }
+        #barcodeInput:focus { border-color: #2a5298; box-shadow: none; }
+        .table-responsive { flex-grow: 1; overflow-y: auto; max-height: 400px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="fw-bold text-dark">🛒 สั่งซื้อและรับเข้าสินค้า (Procurement)</h2>
+            <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+        </div>
+        
+        <div class="row g-4 h-100 pb-4">
+            <!-- Left: Add Items -->
+            <div class="col-md-7">
+                <div class="glass-card">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">สแกนบาร์โค้ด หรือ พิมพ์ชื่อสินค้า</label>
+                        <form id="searchForm" class="d-flex">
+                            <input type="text" class="form-control" id="barcodeInput" placeholder="สแกน หรือ ค้นหา..." autocomplete="off">
+                            <button type="submit" class="btn btn-primary ms-2 rounded-pill px-4">ค้นหา</button>
+                        </form>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table align-middle table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>รายการสินค้า (ใบสั่งซื้อ)</th>
+                                    <th class="text-center">ราคาทุน/ชิ้น</th>
+                                    <th class="text-center">จำนวนรับเข้า</th>
+                                    <th class="text-end">รวม</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cartTable">
+                                <!-- JS items here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Checkout -->
+            <div class="col-md-5">
+                <div class="glass-card">
+                    <h5 class="fw-bold mb-3">สรุปยอดการสั่งซื้อ</h5>
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">ชื่อซัพพลายเออร์ (Supplier)</label>
+                        <input type="text" class="form-control" id="supplierName" placeholder="เช่น ร้านค้าส่ง A">
+                    </div>
+
+                    <div class="mt-auto">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="hasVat" onchange="renderCart()">
+                            <label class="form-check-label fw-bold text-dark" for="hasVat">คำนวณ VAT 7%</label>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-2 text-muted">
+                            <span>ยอดรวมก่อน VAT (Subtotal)</span>
+                            <span id="subtotalDisplay">฿0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3 text-muted">
+                            <span>ภาษีมูลค่าเพิ่ม 7% (VAT)</span>
+                            <span id="vatDisplay">฿0.00</span>
+                        </div>
+
+                        <div class="total-box mb-3 shadow">
+                            <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
+                            <h1 class="m-0 fw-bold text-warning" id="totalAmount">฿0.00</h1>
+                        </div>
+
+                        <button class="btn btn-primary btn-lg w-100 fw-bold rounded-pill shadow" onclick="checkout()">
+                            📝 บันทึกรับเข้าสินค้า
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cart = [];
+
+        document.getElementById('searchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const q = document.getElementById('barcodeInput').value.trim();
+            if (!q) return;
+
+            const res = await fetch(`/api/products/search?q=${q}`);
+            const products = await res.json();
+            
+            if (products.length === 1) {
+                addToCart(products[0]);
+            } else if (products.length > 1) {
+                // If multiple matches (like typing "Paper"), just add the first one for simplicity, 
+                // in a real app you'd show a modal to select.
+                addToCart(products[0]); 
+            } else {
+                alert("ไม่พบสินค้า!");
+            }
+            
+            document.getElementById('barcodeInput').value = '';
+            document.getElementById('barcodeInput').focus();
+        });
+
+        function addToCart(product) {
+            // Check if already in cart
+            const existing = cart.find(i => i.id === product.id);
+            if (existing) {
+                existing.qty += 1;
+            } else {
+                cart.push({
+                    id: product.id,
+                    name: product.name,
+                    cost: product.cost, // using cost for purchase
+                    qty: 1
+                });
+            }
+            renderCart();
+        }
+
+        function removeFromCart(id) {
+            cart = cart.filter(i => i.id !== id);
+            renderCart();
+        }
+
+        function renderCart() {
+            const tbody = document.getElementById('cartTable');
+            tbody.innerHTML = '';
+            let subtotal = 0;
+            
+            cart.forEach(item => {
+                const itemTotal = item.cost * item.qty;
+                subtotal += itemTotal;
+                tbody.innerHTML += `
+                    <tr>
+                        <td>
+                            <div class="fw-bold">${item.name}</div>
+                        </td>
+                        <td style="width: 120px;">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">฿</span>
+                                <input type="number" step="0.01" min="0" class="form-control text-center fw-bold" value="${item.cost}" onchange="updateCost(${item.id}, this.value)">
+                            </div>
+                        </td>
+                        <td style="width: 100px;">
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.id}, this.value)">
+                            </div>
+                        </td>
+                        <td class="text-end fw-bold text-dark">฿${itemTotal.toFixed(2)}</td>
+                        <td class="text-end" style="width: 40px;">
+                            <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="removeFromCart(${item.id})">✖</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            const hasVat = document.getElementById('hasVat').checked;
+            const vatAmount = hasVat ? subtotal * 0.07 : 0;
+            const netTotal = subtotal + vatAmount;
+
+            document.getElementById('subtotalDisplay').innerText = `฿${subtotal.toFixed(2)}`;
+            document.getElementById('vatDisplay').innerText = `฿${vatAmount.toFixed(2)}`;
+            document.getElementById('totalAmount').innerText = `฿${netTotal.toFixed(2)}`;
+        }
+
+        function updateQty(id, newQty) {
+            const qty = parseInt(newQty);
+            if(qty <= 0) {
+                removeFromCart(id);
+                return;
+            }
+            const item = cart.find(i => i.id === id);
+            if (item) item.qty = qty;
+            renderCart();
+        }
+
+        function updateCost(id, newCost) {
+            const cost = parseFloat(newCost);
+            if(cost < 0) return;
+            const item = cart.find(i => i.id === id);
+            if (item) item.cost = cost;
+            renderCart();
+        }
+
+        async function checkout() {
+            if (cart.length === 0) {
+                alert("ไม่มีสินค้าในรายการสั่งซื้อ!");
+                return;
+            }
+            
+            const supplier = document.getElementById('supplierName').value.trim();
+            const hasVat = document.getElementById('hasVat').checked;
+            
+            const payload = {
+                supplier_name: supplier || 'ไม่ระบุ',
+                has_vat: hasVat,
+                items: cart
+            };
+
+            const res = await fetch('/api/purchases', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert("บันทึกรับเข้าสินค้าเรียบร้อยแล้ว!\nระบบได้อัปเดตสต๊อกและบันทึกลงรายจ่ายร้านค้าอัตโนมัติ");
+                
+                cart = [];
+                document.getElementById('supplierName').value = '';
+                document.getElementById('hasVat').checked = false;
+                renderCart();
+                document.getElementById('barcodeInput').value = '';
+                document.getElementById('barcodeInput').focus();
+            } else {
+                alert("เกิดข้อผิดพลาดในการบันทึก");
+            }
+        }
+    </script>
+</body>
+</html>
