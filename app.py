@@ -27,6 +27,9 @@ def init_db():
             name TEXT NOT NULL,
             type TEXT NOT NULL,
             barcode TEXT,
+            brand TEXT DEFAULT '',
+            model TEXT DEFAULT '',
+            color TEXT DEFAULT '',
             price REAL NOT NULL,
             cost REAL NOT NULL,
             stock_qty INTEGER DEFAULT 0,
@@ -105,6 +108,10 @@ def index():
 def inventory():
     return render_template('inventory.html')
 
+@app.route('/print-barcodes')
+def print_barcodes():
+    return render_template('print_barcodes.html')
+
 @app.route('/pos')
 def pos():
     return render_template('pos.html')
@@ -148,7 +155,16 @@ def add_product():
     new_product = request.get_json()
     name = new_product.get('name')
     type = new_product.get('type')
-    barcode = new_product.get('barcode', '')
+    brand = new_product.get('brand', '')
+    model = new_product.get('model', '')
+    color = new_product.get('color', '')
+    
+    import random
+    barcode = new_product.get('barcode', '').strip()
+    if not barcode:
+        # Generate random 8 digit barcode
+        barcode = str(random.randint(10000000, 99999999))
+        
     price = new_product.get('price', 0.0)
     cost = new_product.get('cost', 0.0)
     stock_qty = new_product.get('stock_qty', 0)
@@ -157,9 +173,9 @@ def add_product():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
-        INSERT INTO Products_Services (name, type, barcode, price, cost, stock_qty, reorder_level)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (name, type, barcode, price, cost, stock_qty, reorder_level))
+        INSERT INTO Products_Services (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level))
     conn.commit()
     conn.close()
     return jsonify({"message": "Product added successfully"}), 201
