@@ -98,21 +98,39 @@
             data.recent_sales.forEach(s => {
                 const d = new Date(s.timestamp).toLocaleString('th-TH');
                 let badgeColor = 'secondary';
-                if(s.payment_method === 'Cash') badgeColor = 'success';
+                if(s.payment_status === 'ยกเลิกบิล') badgeColor = 'danger';
+                else if(s.payment_method === 'Cash') badgeColor = 'success';
                 else if(s.payment_method === 'PromptPay') badgeColor = 'info text-dark';
                 else if(s.payment_method === 'Credit Card') badgeColor = 'warning text-dark';
 
-                let row = `<tr>
+                const isVoided = s.payment_status === 'ยกเลิกบิล';
+                const statusText = isVoided ? 'ยกเลิกบิล' : s.payment_method;
+                const rowClass = isVoided ? 'text-decoration-line-through text-muted' : '';
+
+                let row = `<tr class="${rowClass}">
                     <td><small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small></td>
                     <td>${d}</td>
-                    <td><span class="badge bg-${badgeColor}">${s.payment_method}</span></td>
-                    <td class="text-end fw-bold text-success">${fmt(s.total_amount)}</td>
+                    <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
+                    <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
                     <td class="text-center">
-                        <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill">🖨️ พิมพ์</a>
+                        <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️ พิมพ์</a>
+                        ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌ ยกเลิก</button>` : ''}
                     </td>
                 </tr>`;
                 tbody.innerHTML += row;
             });
+        }
+
+        async function voidSale(id) {
+            if(confirm('คุณแน่ใจหรือไม่ว่าต้องการ "ยกเลิกบิล" นี้?\n(ระบบจะคืนสต๊อกสินค้าและหักยอดขายออก)')) {
+                const res = await fetch(`/api/sales/${id}/void`, { method: 'POST' });
+                if(res.ok) {
+                    alert('ยกเลิกบิลสำเร็จ!');
+                    fetchReports();
+                } else {
+                    alert('เกิดข้อผิดพลาดในการยกเลิกบิล');
+                }
+            }
         }
 
         // Init

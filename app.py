@@ -286,6 +286,33 @@ def checkout_sale():
     conn.close()
     return jsonify({"message": "Sale completed successfully", "sale_id": sale_id}), 201
 
+@app.route('/api/sales/<int:sale_id>/void', methods=['POST'])
+def void_sale(sale_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # Check if already voided
+    sale = c.execute("SELECT payment_status FROM Sales WHERE id = ?", (sale_id,)).fetchone()
+    if not sale or sale['payment_status'] == 'ยกเลิกบิล':
+        conn.close()
+        return jsonify({"message": "Invalid or already voided sale"}), 400
+        
+    # Get items to return stock
+    items = c.execute("SELECT product_id, qty FROM Sale_Items WHERE sale_id = ?", (sale_id,)).fetchall()
+    
+    for item in items:
+        # We only return stock for Retail type (which is managed by stock_qty)
+        # Actually, adding stock back to any product won't hurt if it's a Service (it stays 0 usually, but let's be safe)
+        c.execute('UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ? AND type = "Retail"',
+                  (item['qty'], item['product_id']))
+                  
+    # Mark as voided
+    c.execute("UPDATE Sales SET payment_status = 'ยกเลิกบิล', total_amount = 0 WHERE id = ?", (sale_id,))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Sale voided successfully"})
+
 # --- Purchasing / Procurement ---
 @app.route('/api/purchases', methods=['POST'])
 def add_purchase():
@@ -468,8 +495,8 @@ def purchase_receipt(purchase_id):
 def get_reports():
     conn = get_db_connection()
     
-    # Total Revenue from Sales
-    sales_result = conn.execute('SELECT SUM(total_amount) as total_revenue FROM Sales').fetchone()
+    # Total Revenue from Sales (excluding voided)
+    sales_result = conn.execute("SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status != 'ยกเลิกบิล'").fetchone()
     total_revenue = sales_result['total_revenue'] if sales_result['total_revenue'] else 0.0
     
     # Total Expenses
