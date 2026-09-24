@@ -107,6 +107,14 @@ def inventory():
 def pos():
     return render_template('pos.html')
 
+@app.route('/jobs')
+def jobs():
+    return render_template('jobs.html')
+
+@app.route('/expenses')
+def expenses():
+    return render_template('expenses.html')
+
 @app.route('/api/products/search', methods=['GET'])
 def search_product():
     query = request.args.get('q', '')
@@ -176,6 +184,61 @@ def checkout_sale():
     conn.commit()
     conn.close()
     return jsonify({"message": "Sale completed successfully", "sale_id": sale_id}), 201
+
+# --- Phase 3: Job Orders ---
+@app.route('/api/jobs', methods=['GET'])
+def get_jobs():
+    conn = get_db_connection()
+    jobs = conn.execute('SELECT * FROM Job_Orders ORDER BY timestamp DESC').fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in jobs])
+
+@app.route('/api/jobs', methods=['POST'])
+def add_job():
+    data = request.get_json()
+    customer_name = data.get('customer_name')
+    details = data.get('details')
+    status = data.get('status', 'รอคิว')
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('INSERT INTO Job_Orders (customer_name, details, status) VALUES (?, ?, ?)', (customer_name, details, status))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Job created"}), 201
+
+@app.route('/api/jobs/<int:job_id>', methods=['PUT'])
+def update_job_status(job_id):
+    data = request.get_json()
+    status = data.get('status')
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE Job_Orders SET status = ? WHERE id = ?', (status, job_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Job status updated"})
+
+# --- Phase 3: Expenses ---
+@app.route('/api/expenses', methods=['GET'])
+def get_expenses():
+    conn = get_db_connection()
+    expenses = conn.execute('SELECT * FROM Expenses ORDER BY timestamp DESC').fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in expenses])
+
+@app.route('/api/expenses', methods=['POST'])
+def add_expense():
+    data = request.get_json()
+    description = data.get('description')
+    amount = data.get('amount')
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('INSERT INTO Expenses (description, amount) VALUES (?, ?)', (description, amount))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Expense recorded"}), 201
 
 if __name__ == '__main__':
     init_db()
