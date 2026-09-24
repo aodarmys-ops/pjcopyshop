@@ -173,7 +173,7 @@ def search_product():
 @app.route('/api/products', methods=['GET'])
 def get_products():
     conn = get_db_connection()
-    products = conn.execute('SELECT * FROM Products_Services WHERE is_active = 1').fetchall()
+    products = conn.execute('SELECT * FROM Products_Services WHERE is_active = 1 ORDER BY id DESC').fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in products])
 
