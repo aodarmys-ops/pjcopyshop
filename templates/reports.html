@@ -19,6 +19,23 @@
             <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
         </div>
         
+        <!-- Filter Card -->
+        <div class="glass-card mb-4">
+            <div class="row align-items-end">
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <label class="form-label text-muted small fw-bold">ตั้งแต่วันที่</label>
+                    <input type="date" id="startDate" class="form-control rounded-pill">
+                </div>
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <label class="form-label text-muted small fw-bold">ถึงวันที่</label>
+                    <input type="date" id="endDate" class="form-control rounded-pill">
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="fetchReports()">🔍 กรองข้อมูล</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Dashboard Stats -->
         <div class="row g-4 mb-4">
             <!-- Revenue -->
@@ -50,7 +67,7 @@
         <div class="row">
             <div class="col-12">
                 <div class="glass-card">
-                    <h5 class="fw-bold mb-3">ประวัติการขายล่าสุด (10 รายการล่าสุด)</h5>
+                    <h5 class="fw-bold mb-3" id="salesTableTitle">ประวัติการขายล่าสุด (100 รายการล่าสุด)</h5>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
                             <thead class="table-light">
@@ -74,7 +91,18 @@
 
     <script>
         async function fetchReports() {
-            const res = await fetch('/api/reports');
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let url = '/api/reports';
+            if (startDate && endDate) {
+                url += `?start_date=${startDate}&end_date=${endDate}`;
+                document.getElementById('salesTableTitle').innerText = `ประวัติการขาย (ตั้งแต่วันที่ ${startDate} ถึง ${endDate})`;
+            } else {
+                document.getElementById('salesTableTitle').innerText = `ประวัติการขายล่าสุด (100 รายการล่าสุด)`;
+            }
+
+            const res = await fetch(url);
             const data = await res.json();
             
             // Format Currency

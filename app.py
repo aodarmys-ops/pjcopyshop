@@ -519,18 +519,43 @@ def purchase_receipt(purchase_id):
 # --- Phase 5: Reporting ---
 @app.route('/api/reports', methods=['GET'])
 def get_reports():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
     conn = get_db_connection()
     
+    # Base queries
+    sales_query = "SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status != 'ยกเลิกบิล'"
+    expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE 1=1"
+    recent_sales_query = "SELECT * FROM Sales WHERE 1=1"
+    
+    params = []
+    
+    if start_date and end_date:
+        # SQLite DATETIME works well with 'YYYY-MM-DD HH:MM:SS'
+        # Add time boundaries to cover the full days
+        start = f"{start_date} 00:00:00"
+        end = f"{end_date} 23:59:59"
+        
+        date_filter = " AND timestamp >= ? AND timestamp <= ?"
+        sales_query += date_filter
+        expenses_query += date_filter
+        recent_sales_query += date_filter
+        
+        # params for each query
+        params = [start, end]
+
     # Total Revenue from Sales (excluding voided)
-    sales_result = conn.execute("SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status != 'ยกเลิกบิล'").fetchone()
+    sales_result = conn.execute(sales_query, params).fetchone()
     total_revenue = sales_result['total_revenue'] if sales_result['total_revenue'] else 0.0
     
     # Total Expenses
-    expenses_result = conn.execute('SELECT SUM(amount) as total_expenses FROM Expenses').fetchone()
+    expenses_result = conn.execute(expenses_query, params).fetchone()
     total_expenses = expenses_result['total_expenses'] if expenses_result['total_expenses'] else 0.0
     
     # Recent Sales List
-    recent_sales = conn.execute('SELECT * FROM Sales ORDER BY timestamp DESC LIMIT 10').fetchall()
+    recent_sales_query += " ORDER BY timestamp DESC LIMIT 100" # Increase limit if filtering by date
+    recent_sales = conn.execute(recent_sales_query, params).fetchall()
     
     conn.close()
     
