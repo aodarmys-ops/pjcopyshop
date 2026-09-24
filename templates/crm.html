@@ -30,8 +30,8 @@
                             <input type="text" class="form-control" id="cName" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label text-muted small fw-bold">เบอร์โทรศัพท์ (ใช้ค้นหา/สะสมแต้ม)</label>
-                            <input type="text" class="form-control" id="cPhone" required>
+                            <label class="form-label text-muted small fw-bold">เบอร์โทรศัพท์ (ถ้ามี)</label>
+                            <input type="text" class="form-control" id="cPhone">
                         </div>
                         <button type="submit" class="btn btn-info w-100 fw-bold rounded-pill shadow-sm text-white">ลงทะเบียนสมาชิก</button>
                     </form>
@@ -75,7 +75,7 @@
             data.forEach(c => {
                 let row = `<tr>
                     <td class="fw-bold">${c.name}</td>
-                    <td>${c.phone}</td>
+                    <td>${c.phone || '<span class="text-muted">-</span>'}</td>
                     <td class="text-center">
                         <span class="badge bg-warning text-dark points-badge shadow-sm">⭐ ${c.points}</span>
                     </td>
