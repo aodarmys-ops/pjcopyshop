@@ -445,6 +445,24 @@ def receipt(sale_id):
     
     return render_template('receipt.html', sale=dict(sale), items=[dict(ix) for ix in items])
 
+@app.route('/purchase-receipt/<int:purchase_id>')
+def purchase_receipt(purchase_id):
+    conn = get_db_connection()
+    purchase = conn.execute('SELECT * FROM Purchases WHERE id = ?', (purchase_id,)).fetchone()
+    if not purchase:
+        conn.close()
+        return "Purchase not found", 404
+        
+    items = conn.execute('''
+        SELECT pi.qty, pi.cost_price, p.name 
+        FROM Purchase_Items pi
+        JOIN Products_Services p ON pi.product_id = p.id
+        WHERE pi.purchase_id = ?
+    ''', (purchase_id,)).fetchall()
+    conn.close()
+    
+    return render_template('purchase_receipt.html', purchase=dict(purchase), items=[dict(ix) for ix in items])
+
 # --- Phase 5: Reporting ---
 @app.route('/api/reports', methods=['GET'])
 def get_reports():

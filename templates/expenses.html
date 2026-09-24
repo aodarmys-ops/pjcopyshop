@@ -48,6 +48,7 @@
                                     <th>วันเวลา</th>
                                     <th>รายการ</th>
                                     <th class="text-end">จำนวนเงิน</th>
+                                    <th class="text-center">จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody id="expenseTable">
@@ -57,6 +58,7 @@
                                 <tr>
                                     <td colspan="2" class="text-end">ยอดรวมทั้งหมด:</td>
                                     <td class="text-end" id="totalExpense">฿0.00</td>
+                                    <td></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -77,10 +79,20 @@
             data.forEach(e => {
                 total += e.amount;
                 const d = new Date(e.timestamp).toLocaleString('th-TH');
+                
+                // Parse PO ID from description
+                let actionBtn = `<button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="alert('รายละเอียด:\\n' + '${e.description}')">📄 รายละเอียด</button>`;
+                const poMatch = e.description.match(/\(PO #(\d+)\)/);
+                if (poMatch) {
+                    const poId = poMatch[1];
+                    actionBtn = `<a href="/purchase-receipt/${poId}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">📄 ดูใบสั่งซื้อ</a>`;
+                }
+
                 let row = `<tr>
                     <td><small class="text-muted">${d}</small></td>
                     <td class="fw-bold">${e.description}</td>
                     <td class="text-end fw-bold text-danger">฿${e.amount.toFixed(2)}</td>
+                    <td class="text-center">${actionBtn}</td>
                 </tr>`;
                 tbody.innerHTML += row;
             });
