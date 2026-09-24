@@ -622,7 +622,7 @@ def get_reports():
     total_expenses = expenses_result['total_expenses'] if expenses_result['total_expenses'] else 0.0
     
     # Recent Sales List
-    recent_sales_query += " ORDER BY timestamp DESC LIMIT 100" # Increase limit if filtering by date
+    recent_sales_query += " ORDER BY timestamp DESC LIMIT 1000" # Increase limit if filtering by date
     recent_sales = conn.execute(recent_sales_query, params).fetchall()
     
     # Itemized Sales Summary

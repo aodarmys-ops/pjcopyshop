@@ -133,7 +133,15 @@
             <!-- Recent Sales Table -->
             <div class="col-md-6">
                 <div class="glass-card">
-                    <h5 class="fw-bold mb-3" id="salesTableTitle">ประวัติการขายล่าสุด (100 รายการล่าสุด)</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold m-0" id="salesTableTitle">ประวัติการขายล่าสุด</h5>
+                        <select id="salesPageSize" class="form-select form-select-sm w-auto" onchange="changeSalesPageSize()">
+                            <option value="10" selected>แสดง 10 รายการ</option>
+                            <option value="20">แสดง 20 รายการ</option>
+                            <option value="50">แสดง 50 รายการ</option>
+                            <option value="100">แสดง 100 รายการ</option>
+                        </select>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
                             <thead class="table-light">
@@ -150,12 +158,22 @@
                             </tbody>
                         </table>
                     </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <small class="text-muted" id="salesPageInfo"></small>
+                        <ul class="pagination pagination-sm m-0" id="salesPagination">
+                            <!-- Pagination rendered by JS -->
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        let allRecentSales = [];
+        let currentSalesPage = 1;
+        let salesPageSize = 10;
+
         async function fetchReports() {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
@@ -163,9 +181,9 @@
             let url = '/api/reports';
             if (startDate && endDate) {
                 url += `?start_date=${startDate}&end_date=${endDate}`;
-                document.getElementById('salesTableTitle').innerText = `ประวัติการขาย (ตั้งแต่วันที่ ${startDate} ถึง ${endDate})`;
+                document.getElementById('salesTableTitle').innerText = `ประวัติการขาย (${startDate} ถึง ${endDate})`;
             } else {
-                document.getElementById('salesTableTitle').innerText = `ประวัติการขายล่าสุด (100 รายการล่าสุด)`;
+                document.getElementById('salesTableTitle').innerText = `ประวัติการขายล่าสุด`;
             }
 
             const res = await fetch(url);
@@ -261,12 +279,37 @@
                 `;
             }
             
-            // Update Table - Recent Sales
+            
+            // Render Recent Sales with Pagination
+            allRecentSales = data.recent_sales || [];
+            currentSalesPage = 1;
+            renderRecentSales();
+        }
+
+        function changeSalesPageSize() {
+            salesPageSize = parseInt(document.getElementById('salesPageSize').value);
+            currentSalesPage = 1;
+            renderRecentSales();
+        }
+
+        function goToSalesPage(page) {
+            currentSalesPage = page;
+            renderRecentSales();
+        }
+
+        function renderRecentSales() {
             const tbody = document.getElementById('salesTable');
             tbody.innerHTML = '';
             
-            if (data.recent_sales && data.recent_sales.length > 0) {
-                data.recent_sales.forEach(s => {
+            if (allRecentSales.length > 0) {
+                const totalPages = Math.ceil(allRecentSales.length / salesPageSize);
+                if (currentSalesPage > totalPages) currentSalesPage = totalPages;
+                
+                const startIdx = (currentSalesPage - 1) * salesPageSize;
+                const endIdx = startIdx + salesPageSize;
+                const pageData = allRecentSales.slice(startIdx, endIdx);
+
+                pageData.forEach(s => {
                     const d = new Date(s.timestamp).toLocaleString('th-TH');
                     let badgeColor = 'secondary';
                     if(s.payment_status === 'ยกเลิกบิล') badgeColor = 'danger';
@@ -284,15 +327,41 @@
                         <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
                         <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
                         <td class="text-center">
-                            <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️ พิมพ์</a>
-                            ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌ ยกเลิก</button>` : ''}
+                            <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️</a>
+                            ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌</button>` : ''}
                         </td>
                     </tr>`;
                     tbody.innerHTML += row;
                 });
+
+                document.getElementById('salesPageInfo').innerText = `แสดง ${startIdx + 1} - ${Math.min(endIdx, allRecentSales.length)} จากทั้งหมด ${allRecentSales.length} รายการ`;
+                renderPaginationUI(totalPages);
             } else {
                 tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">ไม่พบประวัติการขายในช่วงเวลานี้</td></tr>`;
+                document.getElementById('salesPageInfo').innerText = '';
+                document.getElementById('salesPagination').innerHTML = '';
             }
+        }
+
+        function renderPaginationUI(totalPages) {
+            const ul = document.getElementById('salesPagination');
+            ul.innerHTML = '';
+            
+            if (totalPages <= 1) return;
+
+            // Prev Button
+            ul.innerHTML += `
+                <li class="page-item ${currentSalesPage === 1 ? 'disabled' : ''}">
+                    <button class="page-link" onclick="goToSalesPage(${currentSalesPage - 1})">ย้อนกลับ</button>
+                </li>
+            `;
+            
+            // Next Button
+            ul.innerHTML += `
+                <li class="page-item ${currentSalesPage === totalPages ? 'disabled' : ''}">
+                    <button class="page-link" onclick="goToSalesPage(${currentSalesPage + 1})">ถัดไป</button>
+                </li>
+            `;
         }
 
         async function voidSale(id) {
