@@ -56,18 +56,32 @@
                 </div>
 
                 <div class="mt-auto">
+                    <div class="mb-2 d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-muted">ส่วนลดท้ายบิล (Discount) ฿</span>
+                        <input type="number" step="0.01" min="0" class="form-control text-end w-50 fw-bold" id="discountInput" value="0" onchange="renderCart()">
+                    </div>
+
                     <div class="total-box mb-3 shadow">
-                        <h5 class="m-0 text-white-50">ยอดรวมทั้งสิ้น</h5>
+                        <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
                         <h1 class="m-0 fw-bold text-warning" id="totalAmount">฿0.00</h1>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">ช่องทางการชำระเงิน (Payment Method)</label>
-                        <select class="form-select form-select-lg fw-bold text-primary" id="paymentMethod">
-                            <option value="Cash">💵 เงินสด (เปิดลิ้นชักอัตโนมัติ)</option>
-                            <option value="PromptPay">📱 สแกนจ่าย (PromptPay)</option>
-                            <option value="Credit Card">💳 บัตรเครดิต (Credit Card)</option>
-                        </select>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label text-muted small fw-bold">ช่องทางการชำระ</label>
+                            <select class="form-select fw-bold text-primary" id="paymentMethod">
+                                <option value="Cash">💵 เงินสด</option>
+                                <option value="PromptPay">📱 สแกนจ่าย</option>
+                                <option value="Credit Card">💳 บัตรเครดิต</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label text-muted small fw-bold">สถานะ</label>
+                            <select class="form-select fw-bold text-success" id="paymentStatus">
+                                <option value="Paid">✅ ชำระแล้ว</option>
+                                <option value="Unpaid">❌ ค้างชำระ</option>
+                            </select>
+                        </div>
                     </div>
 
                     <button class="btn btn-success btn-lg w-100 fw-bold rounded-pill shadow" onclick="checkout()">
@@ -137,19 +151,26 @@
         function renderCart() {
             const tbody = document.getElementById('cartTable');
             tbody.innerHTML = '';
-            let total = 0;
+            let subtotalSum = 0;
             
             cart.forEach(item => {
                 const subtotal = item.price * item.qty;
-                total += subtotal;
+                subtotalSum += subtotal;
                 tbody.innerHTML += `
                     <tr>
                         <td>
                             <div class="fw-bold">${item.name}</div>
-                            <small class="text-muted">฿${item.price.toFixed(2)}</small>
+                        </td>
+                        <td style="width: 100px;">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">฿</span>
+                                <input type="number" step="0.01" class="form-control text-center fw-bold" value="${item.price}" onchange="updatePrice(${item.id}, this.value)">
+                            </div>
                         </td>
                         <td style="width: 80px;">
-                            <input type="number" class="form-control form-control-sm text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.id}, this.value)">
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.id}, this.value)">
+                            </div>
                         </td>
                         <td class="text-end fw-bold text-dark">฿${subtotal.toFixed(2)}</td>
                         <td class="text-end" style="width: 40px;">
@@ -159,7 +180,10 @@
                 `;
             });
             
-            document.getElementById('totalAmount').innerText = `฿${total.toFixed(2)}`;
+            const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+            const netTotal = Math.max(0, subtotalSum - discount);
+            
+            document.getElementById('totalAmount').innerText = `฿${netTotal.toFixed(2)}`;
         }
 
         function updateQty(id, newQty) {
@@ -173,18 +197,31 @@
             renderCart();
         }
 
+        function updatePrice(id, newPrice) {
+            const price = parseFloat(newPrice);
+            if(price < 0) return;
+            const item = cart.find(i => i.id === id);
+            if (item) item.price = price;
+            renderCart();
+        }
+
         async function checkout() {
             if (cart.length === 0) {
                 alert("ตะกร้าสินค้าว่างเปล่า!");
                 return;
             }
             
-            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const subtotalSum = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+            const total = Math.max(0, subtotalSum - discount);
             const method = document.getElementById('paymentMethod').value;
+            const status = document.getElementById('paymentStatus').value;
             
             const payload = {
                 total_amount: total,
+                discount: discount,
                 payment_method: method,
+                payment_status: status,
                 items: cart
             };
 

@@ -49,7 +49,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS Sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             total_amount REAL NOT NULL,
+            discount REAL DEFAULT 0,
             payment_method TEXT NOT NULL,
+            payment_status TEXT DEFAULT 'Paid',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -166,14 +168,19 @@ def add_product():
 def checkout_sale():
     data = request.get_json()
     total_amount = data.get('total_amount', 0)
+    discount = data.get('discount', 0)
     payment_method = data.get('payment_method', 'Cash')
+    payment_status = data.get('payment_status', 'Paid')
     items = data.get('items', [])
 
     conn = get_db_connection()
     c = conn.cursor()
     
     # 1. Insert into Sales
-    c.execute('INSERT INTO Sales (total_amount, payment_method) VALUES (?, ?)', (total_amount, payment_method))
+    c.execute('''
+        INSERT INTO Sales (total_amount, discount, payment_method, payment_status) 
+        VALUES (?, ?, ?, ?)
+    ''', (total_amount, discount, payment_method, payment_status))
     sale_id = c.lastrowid
 
     # 2. Insert into Sale_Items and update stock
