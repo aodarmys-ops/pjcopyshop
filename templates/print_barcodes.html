@@ -96,11 +96,26 @@
             printArea.innerHTML = '';
             
             let hasItems = false;
+            let totalQty = 0;
+
+            // First check total quantity
+            inputs.forEach(input => {
+                const qty = parseInt(input.value);
+                if(qty > 0) totalQty += qty;
+            });
+
+            if (totalQty === 0) {
+                alert('กรุณาระบุจำนวนบาร์โค้ดที่ต้องการพิมพ์อย่างน้อย 1 รายการ');
+                return;
+            }
+            if (totalQty > 10) {
+                alert('เพื่อพิมพ์ให้พอดีใน 1 หน้า กรุณาเลือกพิมพ์บาร์โค้ดรวมกันไม่เกิน 10 ดวงครับ');
+                return;
+            }
 
             inputs.forEach(input => {
                 const qty = parseInt(input.value);
                 if(qty > 0) {
-                    hasItems = true;
                     const barcode = input.getAttribute('data-barcode');
                     const name = input.getAttribute('data-name');
                     const price = parseFloat(input.getAttribute('data-price')).toFixed(2);
@@ -137,11 +152,6 @@
                     }
                 }
             });
-
-            if(!hasItems) {
-                alert('กรุณาระบุจำนวนบาร์โค้ดที่ต้องการพิมพ์อย่างน้อย 1 รายการ');
-                return;
-            }
 
             window.print();
         }
