@@ -136,7 +136,8 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold m-0" id="salesTableTitle">ประวัติการขายล่าสุด</h5>
                         <select id="salesPageSize" class="form-select form-select-sm w-auto" onchange="changeSalesPageSize()">
-                            <option value="10" selected>แสดง 10 รายการ</option>
+                            <option value="6" selected>แสดง 6 รายการ</option>
+                            <option value="10">แสดง 10 รายการ</option>
                             <option value="20">แสดง 20 รายการ</option>
                             <option value="50">แสดง 50 รายการ</option>
                             <option value="100">แสดง 100 รายการ</option>
@@ -172,7 +173,7 @@
     <script>
         let allRecentSales = [];
         let currentSalesPage = 1;
-        let salesPageSize = 10;
+        let salesPageSize = 6;
         
         // Format Currency
         const fmt = (num) => '฿' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
