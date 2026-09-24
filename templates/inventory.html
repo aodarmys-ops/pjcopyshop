@@ -40,6 +40,7 @@
                             <label class="form-label text-muted small fw-bold">ประเภท</label>
                             <select class="form-select" id="pType">
                                 <option value="Retail">สินค้าปลีก (Retail)</option>
+                                <option value="Brewed Drink">เครื่องดื่มชง (Brewed Drink)</option>
                                 <option value="Service">งานบริการ (Service)</option>
                             </select>
                         </div>
@@ -124,7 +125,7 @@
                     <td><small class="text-muted">${p.barcode || p.id}</small></td>
                     <td class="fw-bold">${p.name}</td>
                     <td><small class="text-muted">${p.brand || '-'} / ${p.model || '-'} / ${p.color || '-'}</small></td>
-                    <td><span class="badge rounded-pill bg-${p.type==='Retail'?'primary':'warning text-dark'}">${p.type}</span></td>
+                    <td><span class="badge rounded-pill bg-${p.type==='Retail'?'primary':(p.type==='Brewed Drink'?'warning text-dark':'secondary')}">${p.type}</span></td>
                     <td>
                         <span class="text-muted small">ทุน: ฿${p.cost.toFixed(2)}</span><br>
                         ฿${p.price.toFixed(2)}
@@ -136,7 +137,7 @@
                     </td>
                     <td class="text-center">
                         <button class="btn btn-sm btn-outline-primary rounded-circle mb-1" title="แก้ไขข้อมูล" onclick="editProduct('${encodeURIComponent(JSON.stringify(p))}')">✏️</button>
-                        ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-circle mb-1" title="เพิ่มสต๊อก" onclick="addStock(${p.id}, '${p.name}')">➕</button>` : ''}
+                        ${(p.type === 'Retail' || p.type === 'Brewed Drink') ? `<button class="btn btn-sm btn-success rounded-circle mb-1" title="เพิ่มสต๊อก" onclick="addStock(${p.id}, '${p.name}')">➕</button>` : ''}
                         <button class="btn btn-sm btn-outline-danger rounded-circle mb-1" title="ลบสินค้า" onclick="deleteProduct(${p.id}, '${p.name}')">🗑️</button>
                     </td>
                 </tr>`;

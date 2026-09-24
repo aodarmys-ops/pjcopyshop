@@ -297,18 +297,27 @@ def checkout_sale():
     ''', (total_amount, discount, payment_method, payment_status, customer_id))
     sale_id = c.lastrowid
 
-    # 2. Insert into Sale_Items and update stock
+    # 2. Insert into Sale_Items, update stock, and calculate points
+    earned_points = 0
     for item in items:
         product_id = item['id']
         qty = item['qty']
         price = item['price']
+        item_type = item.get('type', '')
+        
+        if item_type == 'Brewed Drink':
+            earned_points += qty
         
         c.execute('INSERT INTO Sale_Items (sale_id, product_id, qty, price) VALUES (?, ?, ?, ?)',
                   (sale_id, product_id, qty, price))
         
-        # Deduct stock if it is a retail product
+        # Deduct stock if it is a retail product (Brewed drinks might not use stock, but if they do, we'll keep the logic. Let's assume Retail only for now)
         c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND type = "Retail"',
                   (qty, product_id))
+
+    # 3. Add points to customer if applicable
+    if customer_id and earned_points > 0:
+        c.execute('UPDATE Customers SET points = points + ? WHERE id = ?', (earned_points, customer_id))
 
     conn.commit()
     conn.close()

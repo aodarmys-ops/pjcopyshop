@@ -70,7 +70,10 @@
                     </div>
 
                     <div class="total-box mb-3 shadow">
-                        <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
+                        <div class="d-flex justify-content-between align-items-end mb-1">
+                            <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
+                            <small class="text-warning fw-bold" id="pointsEarnedBox">⭐ ได้รับ 0 แต้ม</small>
+                        </div>
                         <h1 class="m-0 fw-bold text-warning" id="totalAmount">฿0.00</h1>
                     </div>
 
@@ -205,6 +208,15 @@
             const netTotal = Math.max(0, subtotalSum - discount);
             
             document.getElementById('totalAmount').innerText = `฿${netTotal.toFixed(2)}`;
+
+            // Calculate points
+            let earnedPoints = 0;
+            cart.forEach(item => {
+                if (item.type === 'Brewed Drink') {
+                    earnedPoints += parseInt(item.qty);
+                }
+            });
+            document.getElementById('pointsEarnedBox').innerText = `⭐ ได้รับ ${earnedPoints} แต้ม`;
         }
 
         function updateQty(id, newQty) {
