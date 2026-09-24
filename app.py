@@ -599,8 +599,6 @@ def get_reports():
         
         # params for each query
         params = [start, end]
-        
-    item_sales_query += " GROUP BY p.id"
 
     # Total Revenue from Sales (excluding voided)
     sales_result = conn.execute(sales_query, params).fetchone()
