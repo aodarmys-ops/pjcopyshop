@@ -561,7 +561,7 @@ def get_reports():
     expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE 1=1"
     recent_sales_query = "SELECT * FROM Sales WHERE 1=1"
     item_sales_query = """
-        SELECT p.name, SUM(si.qty) as total_qty, SUM(si.qty * si.price) as total_amount
+        SELECT p.name, p.type, SUM(si.qty) as total_qty, SUM(si.qty * si.price) as total_amount
         FROM Sale_Items si
         JOIN Sales s ON si.sale_id = s.id
         JOIN Products_Services p ON si.product_id = p.id
@@ -574,6 +574,7 @@ def get_reports():
         JOIN Products_Services p ON si.product_id = p.id
         WHERE s.payment_status != 'ยกเลิกบิล' AND p.type = 'Brewed Drink'
     """
+    free_drinks_query = "SELECT SUM(redeemed_points) as total_redeemed FROM Sales WHERE payment_status != 'ยกเลิกบิล'"
     
     params = []
     
@@ -589,6 +590,7 @@ def get_reports():
         transfer_query += date_filter
         expenses_query += date_filter
         recent_sales_query += date_filter
+        free_drinks_query += date_filter
         
         # for join query
         item_sales_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
@@ -596,6 +598,8 @@ def get_reports():
         
         # params for each query
         params = [start, end]
+        
+    item_sales_query += " GROUP BY p.id"
 
     # Total Revenue from Sales (excluding voided)
     sales_result = conn.execute(sales_query, params).fetchone()
@@ -610,6 +614,10 @@ def get_reports():
     brewed_result = conn.execute(brewed_query, params).fetchone()
     brewed_total = brewed_result['brewed_total'] if brewed_result['brewed_total'] else 0.0
     
+    free_drinks_result = conn.execute(free_drinks_query, params).fetchone()
+    total_redeemed_pts = free_drinks_result['total_redeemed'] if free_drinks_result['total_redeemed'] else 0
+    total_free_drinks = int(total_redeemed_pts / 10)
+
     # Total Expenses
     expenses_result = conn.execute(expenses_query, params).fetchone()
     total_expenses = expenses_result['total_expenses'] if expenses_result['total_expenses'] else 0.0
@@ -631,6 +639,7 @@ def get_reports():
         "cash_total": cash_total,
         "transfer_total": transfer_total,
         "brewed_total": brewed_total,
+        "total_free_drinks": total_free_drinks,
         "total_expenses": total_expenses,
         "net_profit": net_profit,
         "recent_sales": [dict(ix) for ix in recent_sales],

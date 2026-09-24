@@ -86,10 +86,30 @@
 
         <!-- Tables -->
         <div class="row g-4">
-            <!-- Itemized Sales Table -->
+            <!-- Itemized Sales Tables -->
             <div class="col-md-6">
-                <div class="glass-card">
-                    <h5 class="fw-bold mb-3" id="itemSalesTitle">สรุปยอดขายแยกตามสินค้า</h5>
+                <div class="glass-card mb-4 border-warning border-start border-5">
+                    <h5 class="fw-bold mb-3 text-warning text-dark">🥤 สรุปยอดขายเครื่องดื่มชง</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ชื่อสินค้า</th>
+                                    <th class="text-center">จำนวนรวม (แก้ว)</th>
+                                    <th class="text-end">เป็นเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="brewedSalesTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                            <tfoot id="brewedSalesFooter" class="table-light">
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="glass-card border-primary border-start border-5">
+                    <h5 class="fw-bold mb-3" id="itemSalesTitle">📦 สรุปยอดขายสินค้าทั่วไป / บริการ</h5>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
                             <thead class="table-light">
@@ -167,18 +187,75 @@
             
             // Update Table - Item Sales
             const itemTbody = document.getElementById('itemSalesTable');
+            const brewedTbody = document.getElementById('brewedSalesTable');
+            const brewedTfoot = document.getElementById('brewedSalesFooter');
+            
             itemTbody.innerHTML = '';
+            brewedTbody.innerHTML = '';
+            brewedTfoot.innerHTML = '';
+            
+            let totalBrewedQty = 0;
+            
             if (data.item_sales && data.item_sales.length > 0) {
-                data.item_sales.forEach(item => {
-                    let row = `<tr>
-                        <td class="fw-bold text-dark">${item.name}</td>
-                        <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${item.total_qty}</span></td>
-                        <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
-                    </tr>`;
-                    itemTbody.innerHTML += row;
-                });
+                const regularItems = data.item_sales.filter(i => i.type !== 'Brewed Drink');
+                const brewedItems = data.item_sales.filter(i => i.type === 'Brewed Drink');
+                
+                // Regular Items
+                if (regularItems.length > 0) {
+                    regularItems.forEach(item => {
+                        let row = `<tr>
+                            <td class="fw-bold text-dark">${item.name}</td>
+                            <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${item.total_qty}</span></td>
+                            <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
+                        </tr>`;
+                        itemTbody.innerHTML += row;
+                    });
+                } else {
+                    itemTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขาย</td></tr>`;
+                }
+
+                // Brewed Items
+                if (brewedItems.length > 0) {
+                    brewedItems.forEach(item => {
+                        totalBrewedQty += parseInt(item.total_qty);
+                        let row = `<tr>
+                            <td class="fw-bold text-dark">${item.name}</td>
+                            <td class="text-center"><span class="badge bg-warning text-dark rounded-pill px-3">${item.total_qty}</span></td>
+                            <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
+                        </tr>`;
+                        brewedTbody.innerHTML += row;
+                    });
+                } else {
+                    brewedTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขาย</td></tr>`;
+                }
+                
             } else {
                 itemTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
+                brewedTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
+            }
+
+            // Render free drinks breakdown
+            const freeQty = data.total_free_drinks || 0;
+            const normalQty = Math.max(0, totalBrewedQty - freeQty);
+            
+            if (totalBrewedQty > 0) {
+                brewedTfoot.innerHTML = `
+                    <tr>
+                        <td class="text-end text-muted small">ยอดขายปกติ:</td>
+                        <td class="text-center fw-bold text-primary">${normalQty}</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="text-end text-muted small">แลกด้วยแต้มสะสม:</td>
+                        <td class="text-center fw-bold text-danger">${freeQty}</td>
+                        <td></td>
+                    </tr>
+                    <tr class="fs-5">
+                        <td class="text-end text-dark">รวมทั้งหมด:</td>
+                        <td class="text-center fw-bold text-dark">${totalBrewedQty} แก้ว</td>
+                        <td></td>
+                    </tr>
+                `;
             }
             
             // Update Table - Recent Sales
