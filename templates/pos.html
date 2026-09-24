@@ -58,10 +58,16 @@
                 <div class="mt-auto">
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">เลือกลูกค้า (สะสมแต้ม)</label>
-                        <select class="form-select fw-bold border-primary shadow-sm" id="customerSelect">
+                        <select class="form-select fw-bold border-primary shadow-sm mb-2" id="customerSelect" onchange="handleCustomerSelect()">
                             <option value="">👤 ลูกค้าทั่วไป (ไม่สะสมแต้ม)</option>
                             <!-- Customers populated via JS -->
                         </select>
+                        <div id="pointsInfoContainer" class="d-none">
+                            <button id="redeemPointsBtn" class="btn btn-sm btn-outline-warning text-dark fw-bold w-100" onclick="toggleRedeemPoints()">
+                                🎁 ใช้แต้ม 10 แต้ม
+                            </button>
+                            <small id="pointsStatusText" class="text-muted fw-bold mt-1 d-block"></small>
+                        </div>
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
@@ -105,6 +111,9 @@
 
     <script>
         let cart = [];
+        let allCustomers = [];
+        let isRedeemingPoints = false;
+        let selectedCustomerPoints = 0;
 
         document.getElementById('barcodeInput').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
@@ -114,15 +123,59 @@
 
         async function loadCustomers() {
             const res = await fetch('/api/customers');
-            const customers = await res.json();
+            allCustomers = await res.json();
             const select = document.getElementById('customerSelect');
             
-            customers.forEach(c => {
+            allCustomers.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
                 opt.text = `⭐ ${c.name} ${c.phone ? '('+c.phone+')' : ''} - แต้มสะสม: ${c.points}`;
                 select.appendChild(opt);
             });
+        }
+
+        function handleCustomerSelect() {
+            isRedeemingPoints = false;
+            updateRedeemBtnUI();
+            
+            const customerId = document.getElementById('customerSelect').value;
+            const container = document.getElementById('pointsInfoContainer');
+            const statusText = document.getElementById('pointsStatusText');
+            const redeemBtn = document.getElementById('redeemPointsBtn');
+
+            if (!customerId) {
+                container.classList.add('d-none');
+                selectedCustomerPoints = 0;
+                return;
+            }
+
+            container.classList.remove('d-none');
+            const c = allCustomers.find(x => x.id == customerId);
+            selectedCustomerPoints = c ? c.points : 0;
+
+            if (selectedCustomerPoints >= 10) {
+                redeemBtn.classList.remove('d-none');
+                statusText.innerText = `(ปัจจุบันมี ${selectedCustomerPoints} แต้ม)`;
+            } else {
+                redeemBtn.classList.add('d-none');
+                statusText.innerText = `(ปัจจุบันมี ${selectedCustomerPoints} แต้ม - ต้องมี 10 แต้มขึ้นไปจึงจะแลกได้)`;
+            }
+        }
+
+        function toggleRedeemPoints() {
+            isRedeemingPoints = !isRedeemingPoints;
+            updateRedeemBtnUI();
+        }
+
+        function updateRedeemBtnUI() {
+            const redeemBtn = document.getElementById('redeemPointsBtn');
+            if (isRedeemingPoints) {
+                redeemBtn.classList.replace('btn-outline-warning', 'btn-warning');
+                redeemBtn.innerHTML = '✅ กำลังใช้ 10 แต้ม (คลิกเพื่อยกเลิก)';
+            } else {
+                redeemBtn.classList.replace('btn-warning', 'btn-outline-warning');
+                redeemBtn.innerHTML = '🎁 ใช้แต้ม 10 แต้ม';
+            }
         }
 
         async function searchProduct() {
@@ -257,6 +310,7 @@
                 payment_method: method,
                 payment_status: status,
                 customer_id: customerId || null,
+                redeemed_points: isRedeemingPoints ? 10 : 0,
                 items: cart
             };
 
@@ -276,9 +330,16 @@
                 alert(msg);
                 
                 cart = [];
+                isRedeemingPoints = false;
                 renderCart();
                 document.getElementById('barcodeInput').value = '';
                 document.getElementById('customerSelect').value = '';
+                handleCustomerSelect(); // reset points UI
+                
+                // reload customers to get updated points
+                document.getElementById('customerSelect').innerHTML = '<option value="">👤 ลูกค้าทั่วไป (ไม่สะสมแต้ม)</option>';
+                await loadCustomers();
+                
                 document.getElementById('barcodeInput').focus();
             }
         }

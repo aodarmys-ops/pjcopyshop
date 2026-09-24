@@ -285,6 +285,7 @@ def checkout_sale():
     payment_method = data.get('payment_method', 'Cash')
     payment_status = data.get('payment_status', 'Paid')
     customer_id = data.get('customer_id')
+    redeemed_points = data.get('redeemed_points', 0)
     items = data.get('items', [])
 
     conn = get_db_connection()
@@ -315,9 +316,9 @@ def checkout_sale():
         c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND type = "Retail"',
                   (qty, product_id))
 
-    # 3. Add points to customer if applicable
-    if customer_id and earned_points > 0:
-        c.execute('UPDATE Customers SET points = points + ? WHERE id = ?', (earned_points, customer_id))
+    # 3. Add/subtract points to customer if applicable
+    if customer_id and (earned_points > 0 or redeemed_points > 0):
+        c.execute('UPDATE Customers SET points = points + ? - ? WHERE id = ?', (earned_points, redeemed_points, customer_id))
 
     conn.commit()
     conn.close()
