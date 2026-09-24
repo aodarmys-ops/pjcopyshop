@@ -39,8 +39,26 @@
             
             <!-- List -->
             <div class="col-md-8">
-                <div class="glass-card">
-                    <h5 class="fw-bold mb-3">ประวัติรายจ่ายร้าน</h5>
+                <div class="glass-card mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold m-0" id="expensesTableTitle">ประวัติรายจ่ายร้าน</h5>
+                    </div>
+                    <!-- Filter -->
+                    <div class="row align-items-end mb-3">
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label text-muted small fw-bold">ตั้งแต่วันที่</label>
+                            <input type="date" id="startDate" class="form-control rounded-pill">
+                        </div>
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label text-muted small fw-bold">ถึงวันที่</label>
+                            <input type="date" id="endDate" class="form-control rounded-pill">
+                        </div>
+                        <div class="col-md-4 d-flex gap-2">
+                            <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="fetchExpenses()">🔍 กรอง</button>
+                            <button class="btn btn-outline-secondary w-100 rounded-pill fw-bold" onclick="clearFilter()">❌ ล้าง</button>
+                        </div>
+                    </div>
+                    
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mt-2">
                             <thead class="table-light">
@@ -70,7 +88,18 @@
 
     <script>
         async function fetchExpenses() {
-            const res = await fetch('/api/expenses');
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let url = '/api/expenses';
+            if (startDate && endDate) {
+                url += `?start_date=${startDate}&end_date=${endDate}`;
+                document.getElementById('expensesTableTitle').innerText = `ประวัติรายจ่าย (${startDate} ถึง ${endDate})`;
+            } else {
+                document.getElementById('expensesTableTitle').innerText = `ประวัติรายจ่ายร้านทั้งหมด`;
+            }
+
+            const res = await fetch(url);
             const data = await res.json();
             const tbody = document.getElementById('expenseTable');
             tbody.innerHTML = '';
@@ -116,6 +145,12 @@
             e.target.reset();
             fetchExpenses();
         });
+
+        function clearFilter() {
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            fetchExpenses();
+        }
 
         // Init
         fetchExpenses();

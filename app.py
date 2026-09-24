@@ -422,8 +422,21 @@ def update_job_status(job_id):
 # --- Phase 3: Expenses ---
 @app.route('/api/expenses', methods=['GET'])
 def get_expenses():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
     conn = get_db_connection()
-    expenses = conn.execute('SELECT * FROM Expenses ORDER BY timestamp DESC').fetchall()
+    
+    query = "SELECT * FROM Expenses WHERE 1=1"
+    params = []
+    
+    if start_date and end_date:
+        query += " AND timestamp >= ? AND timestamp <= ?"
+        params.extend([f"{start_date} 00:00:00", f"{end_date} 23:59:59"])
+        
+    query += " ORDER BY timestamp DESC"
+    
+    expenses = conn.execute(query, params).fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in expenses])
 
