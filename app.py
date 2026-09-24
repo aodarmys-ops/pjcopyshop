@@ -33,7 +33,8 @@ def init_db():
             price REAL NOT NULL,
             cost REAL NOT NULL,
             stock_qty INTEGER DEFAULT 0,
-            reorder_level INTEGER DEFAULT 5
+            reorder_level INTEGER DEFAULT 5,
+            is_active INTEGER DEFAULT 1
         )
     ''')
     # Inventory Transactions
@@ -146,7 +147,7 @@ def search_product():
 @app.route('/api/products', methods=['GET'])
 def get_products():
     conn = get_db_connection()
-    products = conn.execute('SELECT * FROM Products_Services').fetchall()
+    products = conn.execute('SELECT * FROM Products_Services WHERE is_active = 1').fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in products])
 
@@ -195,6 +196,16 @@ def add_product_stock(product_id):
     conn.close()
     
     return jsonify({"message": "Stock updated successfully"})
+
+@app.route('/api/products/<int:product_id>', methods=['DELETE'])
+def delete_product(product_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE Products_Services SET is_active = 0 WHERE id = ?', (product_id,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": "Product deleted successfully"})
 
 @app.route('/api/sales', methods=['POST'])
 def checkout_sale():

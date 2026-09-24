@@ -130,7 +130,8 @@
                         </span>
                     </td>
                     <td class="text-center">
-                        ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-pill px-3" onclick="addStock(${p.id}, '${p.name}')">+ เพิ่มสต๊อก</button>` : '-'}
+                        ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-pill px-3 me-1" onclick="addStock(${p.id}, '${p.name}')">+ เพิ่มสต๊อก</button>` : ''}
+                        <button class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="deleteProduct(${p.id}, '${p.name}')">ลบ</button>
                     </td>
                 </tr>`;
                 tbody.innerHTML += row;
@@ -149,6 +150,13 @@
                 body: JSON.stringify({ add_qty: qty })
             });
             fetchProducts();
+        }
+
+        async function deleteProduct(id, name) {
+            if(confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบสินค้า "${name}" ออกจากระบบ? (การลบจะเป็นการซ่อนไม่ให้ใช้งานได้อีก)`)) {
+                await fetch(`/api/products/${id}`, { method: 'DELETE' });
+                fetchProducts();
+            }
         }
 
         document.getElementById('addProductForm').addEventListener('submit', async (e) => {
