@@ -10,6 +10,8 @@
         body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
         .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 25px; height: 100%;}
         .stat-value { font-size: 2.5rem; font-weight: 800; }
+        .table-responsive { max-height: 350px; overflow-y: auto; }
+        .table-responsive thead th { position: sticky; top: 0; background-color: #f8f9fa; z-index: 1; }
     </style>
 </head>
 <body>
@@ -89,9 +91,10 @@
             <!-- Itemized Sales Tables -->
             <div class="col-md-6">
                 <div class="glass-card mb-4 border-warning border-start border-5">
+                    
                     <h5 class="fw-bold mb-3 text-warning text-dark">🥤 สรุปยอดขายเครื่องดื่มชง</h5>
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
+                    <div class="table-responsive mb-4">
+                        <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th>ชื่อสินค้า</th>
@@ -106,12 +109,12 @@
                             </tfoot>
                         </table>
                     </div>
-                </div>
+                    
+                    <hr class="my-4">
 
-                <div class="glass-card border-primary border-start border-5">
-                    <h5 class="fw-bold mb-3" id="itemSalesTitle">📦 สรุปยอดขายสินค้าทั่วไป / บริการ</h5>
+                    <h5 class="fw-bold mb-3 text-primary" id="itemSalesTitle">📦 สรุปยอดขายสินค้าทั่วไป / บริการ</h5>
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle">
+                        <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th>ชื่อสินค้า</th>
