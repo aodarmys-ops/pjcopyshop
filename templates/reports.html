@@ -173,6 +173,9 @@
         let allRecentSales = [];
         let currentSalesPage = 1;
         let salesPageSize = 10;
+        
+        // Format Currency
+        const fmt = (num) => '฿' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
         async function fetchReports() {
             const startDate = document.getElementById('startDate').value;
@@ -188,9 +191,6 @@
 
             const res = await fetch(url);
             const data = await res.json();
-            
-            // Format Currency
-            const fmt = (num) => '฿' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
             
             // Update Stats
             document.getElementById('valRevenue').innerText = fmt(data.total_revenue);
