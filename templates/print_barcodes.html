@@ -75,10 +75,12 @@
             const tbody = document.getElementById('productList');
             tbody.innerHTML = '';
             
-            productsData.forEach(p => {
+            productsData.forEach((p, index) => {
                 const subTitle = [p.brand, p.model, p.color].filter(Boolean).join(' / ');
                 let row = `<tr>
-                    <td><span class="badge bg-secondary">${p.barcode}</span></td>
+                    <td>
+                        <svg id="preview-barcode-${index}" style="max-height: 40px;"></svg>
+                    </td>
                     <td class="fw-bold">
                         ${p.name} 
                         ${subTitle ? `<br><small class="text-muted">${subTitle}</small>` : ''}
@@ -90,6 +92,17 @@
                     </td>
                 </tr>`;
                 tbody.innerHTML += row;
+            });
+
+            // Render SVGs
+            productsData.forEach((p, index) => {
+                JsBarcode(`#preview-barcode-${index}`, p.barcode, {
+                    format: "CODE128",
+                    displayValue: true,
+                    fontSize: 14,
+                    height: 30,
+                    margin: 0
+                });
             });
         }
 
