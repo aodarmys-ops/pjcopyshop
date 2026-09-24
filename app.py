@@ -207,6 +207,23 @@ def delete_product(product_id):
     
     return jsonify({"message": "Product deleted successfully"})
 
+@app.route('/api/products/<int:product_id>/price', methods=['PUT'])
+def edit_product_price(product_id):
+    data = request.get_json()
+    cost = data.get('cost')
+    price = data.get('price')
+    
+    if cost is None or price is None or cost < 0 or price < 0:
+        return jsonify({"message": "Invalid cost or price"}), 400
+        
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE Products_Services SET cost = ?, price = ? WHERE id = ?', (cost, price, product_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": "Product price updated successfully"})
+
 @app.route('/api/sales', methods=['POST'])
 def checkout_sale():
     data = request.get_json()

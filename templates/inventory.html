@@ -123,15 +123,19 @@
                     <td class="fw-bold">${p.name}</td>
                     <td><small class="text-muted">${p.brand || '-'} / ${p.model || '-'} / ${p.color || '-'}</small></td>
                     <td><span class="badge rounded-pill bg-${p.type==='Retail'?'primary':'warning text-dark'}">${p.type}</span></td>
-                    <td>฿${p.price.toFixed(2)}</td>
+                    <td>
+                        <span class="text-muted small">ทุน: ฿${p.cost.toFixed(2)}</span><br>
+                        ฿${p.price.toFixed(2)}
+                    </td>
                     <td>
                         <span class="${p.stock_qty <= p.reorder_level && p.type === 'Retail' ? 'text-danger fw-bold' : 'text-success fw-bold'}">
                             ${p.type === 'Service' ? '-' : p.stock_qty + ' ชิ้น'}
                         </span>
                     </td>
                     <td class="text-center">
-                        ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-pill px-3 me-1" onclick="addStock(${p.id}, '${p.name}')">+ เพิ่มสต๊อก</button>` : ''}
-                        <button class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="deleteProduct(${p.id}, '${p.name}')">ลบ</button>
+                        <button class="btn btn-sm btn-outline-primary rounded-pill px-3 me-1 mb-1" onclick="editPrice(${p.id}, '${p.name}', ${p.cost}, ${p.price})">✏️ แก้ไขราคา</button>
+                        ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-pill px-3 me-1 mb-1" onclick="addStock(${p.id}, '${p.name}')">+ เพิ่มสต๊อก</button>` : ''}
+                        <button class="btn btn-sm btn-outline-danger rounded-pill px-3 mb-1" onclick="deleteProduct(${p.id}, '${p.name}')">ลบ</button>
                     </td>
                 </tr>`;
                 tbody.innerHTML += row;
@@ -157,6 +161,25 @@
                 await fetch(`/api/products/${id}`, { method: 'DELETE' });
                 fetchProducts();
             }
+        }
+
+        async function editPrice(id, name, currentCost, currentPrice) {
+            let newCost = prompt(`แก้ไขต้นทุนของ "${name}"\n(ปัจจุบัน: ${currentCost})`, currentCost);
+            if (newCost === null) return;
+            newCost = parseFloat(newCost);
+            if (isNaN(newCost) || newCost < 0) return alert("ราคาทุนไม่ถูกต้อง");
+
+            let newPrice = prompt(`แก้ไขราคาขายของ "${name}"\n(ปัจจุบัน: ${currentPrice})`, currentPrice);
+            if (newPrice === null) return;
+            newPrice = parseFloat(newPrice);
+            if (isNaN(newPrice) || newPrice < 0) return alert("ราคาขายไม่ถูกต้อง");
+
+            await fetch(`/api/products/${id}/price`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cost: newCost, price: newPrice })
+            });
+            fetchProducts();
         }
 
         document.getElementById('addProductForm').addEventListener('submit', async (e) => {
