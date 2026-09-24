@@ -29,8 +29,9 @@
         <div class="row">
             <div class="col-md-4">
                 <div class="glass-card mb-4">
-                    <h5 class="fw-bold mb-3">เพิ่มสินค้า / บริการใหม่</h5>
+                    <h5 class="fw-bold mb-3" id="formTitle">เพิ่มสินค้า / บริการใหม่</h5>
                     <form id="addProductForm">
+                        <input type="hidden" id="pId">
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">ชื่อสินค้า</label>
                             <input type="text" class="form-control" id="pName" required>
@@ -80,7 +81,8 @@
                                 <input type="number" class="form-control" id="pReorder" value="5">
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100 mt-2 fw-bold rounded-pill">บันทึกข้อมูล</button>
+                        <button type="submit" class="btn btn-primary w-100 mt-2 fw-bold rounded-pill" id="formSubmitBtn">บันทึกข้อมูล</button>
+                        <button type="button" class="btn btn-secondary w-100 mt-2 fw-bold rounded-pill d-none" id="formCancelBtn" onclick="cancelEdit()">ยกเลิกการแก้ไข</button>
                     </form>
                 </div>
             </div>
@@ -133,7 +135,7 @@
                         </span>
                     </td>
                     <td class="text-center">
-                        <button class="btn btn-sm btn-outline-primary rounded-circle mb-1" title="แก้ไขราคา" onclick="editPrice(${p.id}, '${p.name}', ${p.cost}, ${p.price})">✏️</button>
+                        <button class="btn btn-sm btn-outline-primary rounded-circle mb-1" title="แก้ไขข้อมูล" onclick="editProduct('${encodeURIComponent(JSON.stringify(p))}')">✏️</button>
                         ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-circle mb-1" title="เพิ่มสต๊อก" onclick="addStock(${p.id}, '${p.name}')">➕</button>` : ''}
                         <button class="btn btn-sm btn-outline-danger rounded-circle mb-1" title="ลบสินค้า" onclick="deleteProduct(${p.id}, '${p.name}')">🗑️</button>
                     </td>
@@ -163,27 +165,40 @@
             }
         }
 
-        async function editPrice(id, name, currentCost, currentPrice) {
-            let newCost = prompt(`แก้ไขต้นทุนของ "${name}"\n(ปัจจุบัน: ${currentCost})`, currentCost);
-            if (newCost === null) return;
-            newCost = parseFloat(newCost);
-            if (isNaN(newCost) || newCost < 0) return alert("ราคาทุนไม่ถูกต้อง");
+        function editProduct(pStr) {
+            const p = JSON.parse(decodeURIComponent(pStr));
+            document.getElementById('pId').value = p.id;
+            document.getElementById('pName').value = p.name;
+            document.getElementById('pType').value = p.type;
+            document.getElementById('pBrand').value = p.brand;
+            document.getElementById('pModel').value = p.model;
+            document.getElementById('pColor').value = p.color;
+            document.getElementById('pBarcode').value = p.barcode || '';
+            document.getElementById('pCost').value = p.cost;
+            document.getElementById('pPrice').value = p.price;
+            document.getElementById('pStock').value = p.stock_qty;
+            document.getElementById('pReorder').value = p.reorder_level;
+            
+            document.getElementById('formTitle').innerText = '✏️ แก้ไขข้อมูลสินค้า';
+            document.getElementById('formSubmitBtn').innerText = 'อัปเดตข้อมูล';
+            document.getElementById('formSubmitBtn').classList.replace('btn-primary', 'btn-warning');
+            document.getElementById('formCancelBtn').classList.remove('d-none');
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
 
-            let newPrice = prompt(`แก้ไขราคาขายของ "${name}"\n(ปัจจุบัน: ${currentPrice})`, currentPrice);
-            if (newPrice === null) return;
-            newPrice = parseFloat(newPrice);
-            if (isNaN(newPrice) || newPrice < 0) return alert("ราคาขายไม่ถูกต้อง");
-
-            await fetch(`/api/products/${id}/price`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cost: newCost, price: newPrice })
-            });
-            fetchProducts();
+        function cancelEdit() {
+            document.getElementById('addProductForm').reset();
+            document.getElementById('pId').value = '';
+            document.getElementById('formTitle').innerText = 'เพิ่มสินค้า / บริการใหม่';
+            document.getElementById('formSubmitBtn').innerText = 'บันทึกข้อมูล';
+            document.getElementById('formSubmitBtn').classList.replace('btn-warning', 'btn-primary');
+            document.getElementById('formCancelBtn').classList.add('d-none');
         }
 
         document.getElementById('addProductForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const id = document.getElementById('pId').value;
             const payload = {
                 name: document.getElementById('pName').value,
                 type: document.getElementById('pType').value,
@@ -197,13 +212,24 @@
                 reorder_level: parseInt(document.getElementById('pReorder').value)
             };
             
-            await fetch('/api/products', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            if (id) {
+                // Update existing
+                await fetch(`/api/products/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                cancelEdit();
+            } else {
+                // Add new
+                await fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                e.target.reset();
+            }
             
-            e.target.reset();
             fetchProducts();
         });
 
