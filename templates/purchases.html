@@ -38,9 +38,11 @@
                         <table class="table align-middle table-hover">
                             <thead class="table-light">
                                 <tr>
-                                    <th>รายการสินค้า (ใบสั่งซื้อ)</th>
-                                    <th class="text-center">ราคาทุน/ชิ้น</th>
-                                    <th class="text-center">จำนวนรับเข้า</th>
+                                    <th>รายการ (สินค้า)</th>
+                                    <th class="text-center">รับมา (กล่อง/แพ็ค)</th>
+                                    <th class="text-center">ชิ้น / กล่อง</th>
+                                    <th class="text-center">ราคาทุน / กล่อง</th>
+                                    <th class="text-center">ทุน / ชิ้น</th>
                                     <th class="text-end">รวม</th>
                                     <th></th>
                                 </tr>
@@ -121,13 +123,14 @@
             // Check if already in cart
             const existing = cart.find(i => i.id === product.id);
             if (existing) {
-                existing.qty += 1;
+                existing.packs += 1;
             } else {
                 cart.push({
                     id: product.id,
                     name: product.name,
-                    cost: product.cost, // using cost for purchase
-                    qty: 1
+                    cost_per_pack: product.cost > 0 ? product.cost : 0, 
+                    pieces_per_pack: 1,
+                    packs: 1
                 });
             }
             renderCart();
@@ -144,23 +147,28 @@
             let subtotal = 0;
             
             cart.forEach(item => {
-                const itemTotal = item.cost * item.qty;
+                const itemTotal = item.cost_per_pack * item.packs;
+                const costPerPiece = (item.cost_per_pack / item.pieces_per_pack) || 0;
                 subtotal += itemTotal;
                 tbody.innerHTML += `
                     <tr>
                         <td>
                             <div class="fw-bold">${item.name}</div>
                         </td>
+                        <td style="width: 100px;">
+                            <input type="number" class="form-control text-center fw-bold" value="${item.packs}" onchange="updateCart(${item.id}, 'packs', this.value)">
+                        </td>
+                        <td style="width: 100px;">
+                            <input type="number" class="form-control text-center fw-bold" value="${item.pieces_per_pack}" onchange="updateCart(${item.id}, 'pieces', this.value)">
+                        </td>
                         <td style="width: 120px;">
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text">฿</span>
-                                <input type="number" step="0.01" min="0" class="form-control text-center fw-bold" value="${item.cost}" onchange="updateCost(${item.id}, this.value)">
+                                <input type="number" step="0.01" min="0" class="form-control text-center fw-bold text-primary" value="${item.cost_per_pack}" onchange="updateCart(${item.id}, 'cost', this.value)">
                             </div>
                         </td>
-                        <td style="width: 100px;">
-                            <div class="input-group input-group-sm">
-                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.id}, this.value)">
-                            </div>
+                        <td class="text-center text-muted fw-bold">
+                            ฿${costPerPiece.toFixed(2)}
                         </td>
                         <td class="text-end fw-bold text-dark">฿${itemTotal.toFixed(2)}</td>
                         <td class="text-end" style="width: 40px;">
@@ -179,22 +187,20 @@
             document.getElementById('totalAmount').innerText = `฿${netTotal.toFixed(2)}`;
         }
 
-        function updateQty(id, newQty) {
-            const qty = parseInt(newQty);
-            if(qty <= 0) {
-                removeFromCart(id);
-                return;
+        function updateCart(id, field, value) {
+            const val = parseFloat(value);
+            if(val < 0) return;
+            const item = cart.find(i => i.id === id);
+            if (!item) return;
+            
+            if (field === 'packs') {
+                if(val === 0) { removeFromCart(id); return; }
+                item.packs = val;
+            } else if (field === 'pieces') {
+                item.pieces_per_pack = val > 0 ? val : 1;
+            } else if (field === 'cost') {
+                item.cost_per_pack = val;
             }
-            const item = cart.find(i => i.id === id);
-            if (item) item.qty = qty;
-            renderCart();
-        }
-
-        function updateCost(id, newCost) {
-            const cost = parseFloat(newCost);
-            if(cost < 0) return;
-            const item = cart.find(i => i.id === id);
-            if (item) item.cost = cost;
             renderCart();
         }
 
@@ -210,7 +216,11 @@
             const payload = {
                 supplier_name: supplier || 'ไม่ระบุ',
                 has_vat: hasVat,
-                items: cart
+                items: cart.map(item => ({
+                    id: item.id,
+                    qty: item.packs * item.pieces_per_pack,
+                    cost: item.cost_per_pack / item.pieces_per_pack
+                }))
             };
 
             const res = await fetch('/api/purchases', {
