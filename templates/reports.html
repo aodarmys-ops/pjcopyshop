@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports (รายงานและสถิติ)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 25px; height: 100%;}
+        .stat-value { font-size: 2.5rem; font-weight: 800; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-dark">📊 รายงานยอดขายและกำไร (Reports)</h2>
+            <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+        </div>
+        
+        <!-- Dashboard Stats -->
+        <div class="row g-4 mb-4">
+            <!-- Revenue -->
+            <div class="col-md-4">
+                <div class="glass-card text-center border-bottom border-5 border-success">
+                    <h5 class="text-muted fw-bold mb-3">ยอดขายรวม (Revenue)</h5>
+                    <div class="stat-value text-success" id="valRevenue">฿0.00</div>
+                </div>
+            </div>
+            
+            <!-- Expenses -->
+            <div class="col-md-4">
+                <div class="glass-card text-center border-bottom border-5 border-danger">
+                    <h5 class="text-muted fw-bold mb-3">รายจ่ายรวม (Expenses)</h5>
+                    <div class="stat-value text-danger" id="valExpenses">฿0.00</div>
+                </div>
+            </div>
+            
+            <!-- Net Profit -->
+            <div class="col-md-4">
+                <div class="glass-card text-center border-bottom border-5 border-primary">
+                    <h5 class="text-muted fw-bold mb-3">กำไรสุทธิ (Net Profit)</h5>
+                    <div class="stat-value text-primary" id="valNetProfit">฿0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Sales Table -->
+        <div class="row">
+            <div class="col-12">
+                <div class="glass-card">
+                    <h5 class="fw-bold mb-3">ประวัติการขายล่าสุด (10 รายการล่าสุด)</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>รหัสบิล</th>
+                                    <th>วันเวลาที่ขาย</th>
+                                    <th>ช่องทางชำระเงิน</th>
+                                    <th class="text-end">ยอดเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchReports() {
+            const res = await fetch('/api/reports');
+            const data = await res.json();
+            
+            // Format Currency
+            const fmt = (num) => '฿' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            // Update Stats
+            document.getElementById('valRevenue').innerText = fmt(data.total_revenue);
+            document.getElementById('valExpenses').innerText = fmt(data.total_expenses);
+            
+            const profitEl = document.getElementById('valNetProfit');
+            profitEl.innerText = fmt(data.net_profit);
+            if(data.net_profit < 0) {
+                profitEl.classList.remove('text-primary');
+                profitEl.classList.add('text-danger');
+            }
+            
+            // Update Table
+            const tbody = document.getElementById('salesTable');
+            tbody.innerHTML = '';
+            
+            data.recent_sales.forEach(s => {
+                const d = new Date(s.timestamp).toLocaleString('th-TH');
+                let badgeColor = 'secondary';
+                if(s.payment_method === 'Cash') badgeColor = 'success';
+                else if(s.payment_method === 'PromptPay') badgeColor = 'info text-dark';
+                else if(s.payment_method === 'Credit Card') badgeColor = 'warning text-dark';
+
+                let row = `<tr>
+                    <td><small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small></td>
+                    <td>${d}</td>
+                    <td><span class="badge bg-${badgeColor}">${s.payment_method}</span></td>
+                    <td class="text-end fw-bold text-success">${fmt(s.total_amount)}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // Init
+        fetchReports();
+    </script>
+</body>
+</html>

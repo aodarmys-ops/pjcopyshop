@@ -119,6 +119,10 @@ def expenses():
 def crm():
     return render_template('crm.html')
 
+@app.route('/reports')
+def reports():
+    return render_template('reports.html')
+
 @app.route('/api/products/search', methods=['GET'])
 def search_product():
     query = request.args.get('q', '')
@@ -283,6 +287,33 @@ def update_points(customer_id):
     conn.commit()
     conn.close()
     return jsonify({"message": f"Points {action}ed successfully"})
+
+# --- Phase 5: Reporting ---
+@app.route('/api/reports', methods=['GET'])
+def get_reports():
+    conn = get_db_connection()
+    
+    # Total Revenue from Sales
+    sales_result = conn.execute('SELECT SUM(total_amount) as total_revenue FROM Sales').fetchone()
+    total_revenue = sales_result['total_revenue'] if sales_result['total_revenue'] else 0.0
+    
+    # Total Expenses
+    expenses_result = conn.execute('SELECT SUM(amount) as total_expenses FROM Expenses').fetchone()
+    total_expenses = expenses_result['total_expenses'] if expenses_result['total_expenses'] else 0.0
+    
+    # Recent Sales List
+    recent_sales = conn.execute('SELECT * FROM Sales ORDER BY timestamp DESC LIMIT 10').fetchall()
+    
+    conn.close()
+    
+    net_profit = total_revenue - total_expenses
+    
+    return jsonify({
+        "total_revenue": total_revenue,
+        "total_expenses": total_expenses,
+        "net_profit": net_profit,
+        "recent_sales": [dict(ix) for ix in recent_sales]
+    })
 
 if __name__ == '__main__':
     init_db()
