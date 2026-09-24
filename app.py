@@ -103,6 +103,21 @@ def index():
 def inventory():
     return render_template('inventory.html')
 
+@app.route('/pos')
+def pos():
+    return render_template('pos.html')
+
+@app.route('/api/products/search', methods=['GET'])
+def search_product():
+    query = request.args.get('q', '')
+    conn = get_db_connection()
+    products = conn.execute(
+        'SELECT * FROM Products_Services WHERE barcode = ? OR name LIKE ?',
+        (query, f'%{query}%')
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in products])
+
 @app.route('/api/products', methods=['GET'])
 def get_products():
     conn = get_db_connection()
@@ -130,6 +145,37 @@ def add_product():
     conn.commit()
     conn.close()
     return jsonify({"message": "Product added successfully"}), 201
+
+@app.route('/api/sales', methods=['POST'])
+def checkout_sale():
+    data = request.get_json()
+    total_amount = data.get('total_amount', 0)
+    payment_method = data.get('payment_method', 'Cash')
+    items = data.get('items', [])
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # 1. Insert into Sales
+    c.execute('INSERT INTO Sales (total_amount, payment_method) VALUES (?, ?)', (total_amount, payment_method))
+    sale_id = c.lastrowid
+
+    # 2. Insert into Sale_Items and update stock
+    for item in items:
+        product_id = item['id']
+        qty = item['qty']
+        price = item['price']
+        
+        c.execute('INSERT INTO Sale_Items (sale_id, product_id, qty, price) VALUES (?, ?, ?, ?)',
+                  (sale_id, product_id, qty, price))
+        
+        # Deduct stock if it is a retail product
+        c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND type = "Retail"',
+                  (qty, product_id))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Sale completed successfully", "sale_id": sale_id}), 201
 
 if __name__ == '__main__':
     init_db()
