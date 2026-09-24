@@ -59,6 +59,7 @@
                                     <th>วันเวลาที่ขาย</th>
                                     <th>ช่องทางชำระเงิน</th>
                                     <th class="text-end">ยอดเงิน</th>
+                                    <th class="text-center">จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody id="salesTable">
@@ -106,6 +107,9 @@
                     <td>${d}</td>
                     <td><span class="badge bg-${badgeColor}">${s.payment_method}</span></td>
                     <td class="text-end fw-bold text-success">${fmt(s.total_amount)}</td>
+                    <td class="text-center">
+                        <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill">🖨️ พิมพ์</a>
+                    </td>
                 </tr>`;
                 tbody.innerHTML += row;
             });

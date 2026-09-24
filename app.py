@@ -288,6 +288,24 @@ def update_points(customer_id):
     conn.close()
     return jsonify({"message": f"Points {action}ed successfully"})
 
+@app.route('/receipt/<int:sale_id>')
+def receipt(sale_id):
+    conn = get_db_connection()
+    sale = conn.execute('SELECT * FROM Sales WHERE id = ?', (sale_id,)).fetchone()
+    if not sale:
+        conn.close()
+        return "Sale not found", 404
+        
+    items = conn.execute('''
+        SELECT si.qty, si.price, p.name 
+        FROM Sale_Items si
+        JOIN Products_Services p ON si.product_id = p.id
+        WHERE si.sale_id = ?
+    ''', (sale_id,)).fetchall()
+    conn.close()
+    
+    return render_template('receipt.html', sale=dict(sale), items=[dict(ix) for ix in items])
+
 # --- Phase 5: Reporting ---
 @app.route('/api/reports', methods=['GET'])
 def get_reports():
