@@ -57,7 +57,8 @@ def init_db():
             payment_method TEXT NOT NULL,
             payment_status TEXT DEFAULT 'Paid',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            customer_id INTEGER
+            customer_id INTEGER,
+            redeemed_points INTEGER DEFAULT 0
         )
     ''')
     c.execute('''
@@ -293,9 +294,9 @@ def checkout_sale():
     
     # 1. Insert into Sales
     c.execute('''
-        INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id) 
-        VALUES (?, ?, ?, ?, ?)
-    ''', (total_amount, discount, payment_method, payment_status, customer_id))
+        INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id, redeemed_points) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (total_amount, discount, payment_method, payment_status, customer_id, redeemed_points))
     sale_id = c.lastrowid
 
     # 2. Insert into Sale_Items, update stock, and calculate points
