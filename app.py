@@ -115,6 +115,10 @@ def jobs():
 def expenses():
     return render_template('expenses.html')
 
+@app.route('/crm')
+def crm():
+    return render_template('crm.html')
+
 @app.route('/api/products/search', methods=['GET'])
 def search_product():
     query = request.args.get('q', '')
@@ -239,6 +243,46 @@ def add_expense():
     conn.commit()
     conn.close()
     return jsonify({"message": "Expense recorded"}), 201
+
+# --- Phase 4: CRM & Loyalty ---
+@app.route('/api/customers', methods=['GET'])
+def get_customers():
+    conn = get_db_connection()
+    customers = conn.execute('SELECT * FROM Customers ORDER BY name').fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in customers])
+
+@app.route('/api/customers', methods=['POST'])
+def add_customer():
+    data = request.get_json()
+    name = data.get('name')
+    phone = data.get('phone', '')
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('INSERT INTO Customers (name, phone, points) VALUES (?, ?, 0)', (name, phone))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Customer added"}), 201
+
+@app.route('/api/customers/<int:customer_id>/points', methods=['PUT'])
+def update_points(customer_id):
+    data = request.get_json()
+    action = data.get('action') # 'add' or 'redeem'
+    points = int(data.get('points', 0))
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    if action == 'add':
+        c.execute('UPDATE Customers SET points = points + ? WHERE id = ?', (points, customer_id))
+    elif action == 'redeem':
+        # Don't let points go below zero
+        c.execute('UPDATE Customers SET points = MAX(0, points - ?) WHERE id = ?', (points, customer_id))
+        
+    conn.commit()
+    conn.close()
+    return jsonify({"message": f"Points {action}ed successfully"})
 
 if __name__ == '__main__':
     init_db()
