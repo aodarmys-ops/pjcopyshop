@@ -556,6 +556,8 @@ def get_reports():
     
     # Base queries
     sales_query = "SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status != 'ยกเลิกบิล'"
+    cash_query = "SELECT SUM(total_amount) as cash_total FROM Sales WHERE payment_status != 'ยกเลิกบิล' AND payment_method = 'Cash'"
+    transfer_query = "SELECT SUM(total_amount) as transfer_total FROM Sales WHERE payment_status != 'ยกเลิกบิล' AND payment_method = 'PromptPay'"
     expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE 1=1"
     recent_sales_query = "SELECT * FROM Sales WHERE 1=1"
     item_sales_query = """
@@ -564,6 +566,13 @@ def get_reports():
         JOIN Sales s ON si.sale_id = s.id
         JOIN Products_Services p ON si.product_id = p.id
         WHERE s.payment_status != 'ยกเลิกบิล'
+    """
+    brewed_query = """
+        SELECT SUM(si.qty * si.price) as brewed_total
+        FROM Sale_Items si
+        JOIN Sales s ON si.sale_id = s.id
+        JOIN Products_Services p ON si.product_id = p.id
+        WHERE s.payment_status != 'ยกเลิกบิล' AND p.type = 'Brewed Drink'
     """
     
     params = []
@@ -576,11 +585,14 @@ def get_reports():
         
         date_filter = " AND timestamp >= ? AND timestamp <= ?"
         sales_query += date_filter
+        cash_query += date_filter
+        transfer_query += date_filter
         expenses_query += date_filter
         recent_sales_query += date_filter
         
         # for join query
         item_sales_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
+        brewed_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
         
         # params for each query
         params = [start, end]
@@ -588,6 +600,15 @@ def get_reports():
     # Total Revenue from Sales (excluding voided)
     sales_result = conn.execute(sales_query, params).fetchone()
     total_revenue = sales_result['total_revenue'] if sales_result['total_revenue'] else 0.0
+    
+    cash_result = conn.execute(cash_query, params).fetchone()
+    cash_total = cash_result['cash_total'] if cash_result['cash_total'] else 0.0
+    
+    transfer_result = conn.execute(transfer_query, params).fetchone()
+    transfer_total = transfer_result['transfer_total'] if transfer_result['transfer_total'] else 0.0
+    
+    brewed_result = conn.execute(brewed_query, params).fetchone()
+    brewed_total = brewed_result['brewed_total'] if brewed_result['brewed_total'] else 0.0
     
     # Total Expenses
     expenses_result = conn.execute(expenses_query, params).fetchone()
@@ -607,6 +628,9 @@ def get_reports():
     
     return jsonify({
         "total_revenue": total_revenue,
+        "cash_total": cash_total,
+        "transfer_total": transfer_total,
+        "brewed_total": brewed_total,
         "total_expenses": total_expenses,
         "net_profit": net_profit,
         "recent_sales": [dict(ix) for ix in recent_sales],

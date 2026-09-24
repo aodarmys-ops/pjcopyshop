@@ -38,28 +38,48 @@
         </div>
         
         <!-- Dashboard Stats -->
-        <div class="row g-4 mb-4">
+        <div class="row g-3 mb-4">
             <!-- Revenue -->
             <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-success">
-                    <h5 class="text-muted fw-bold mb-3">ยอดขายรวม (Revenue)</h5>
-                    <div class="stat-value text-success" id="valRevenue">฿0.00</div>
+                <div class="glass-card text-center border-bottom border-5 border-success p-3">
+                    <h6 class="text-muted fw-bold mb-2">ยอดขายรวม (Total Revenue)</h6>
+                    <div class="stat-value text-success" id="valRevenue" style="font-size: 2rem;">฿0.00</div>
                 </div>
             </div>
             
             <!-- Expenses -->
             <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-danger">
-                    <h5 class="text-muted fw-bold mb-3">รายจ่ายรวม (Expenses)</h5>
-                    <div class="stat-value text-danger" id="valExpenses">฿0.00</div>
+                <div class="glass-card text-center border-bottom border-5 border-danger p-3">
+                    <h6 class="text-muted fw-bold mb-2">รายจ่ายรวม (Total Expenses)</h6>
+                    <div class="stat-value text-danger" id="valExpenses" style="font-size: 2rem;">฿0.00</div>
                 </div>
             </div>
             
             <!-- Net Profit -->
             <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-primary">
-                    <h5 class="text-muted fw-bold mb-3">กำไรสุทธิ (Net Profit)</h5>
-                    <div class="stat-value text-primary" id="valNetProfit">฿0.00</div>
+                <div class="glass-card text-center border-bottom border-5 border-primary p-3">
+                    <h6 class="text-muted fw-bold mb-2">กำไรสุทธิ (Net Profit)</h6>
+                    <div class="stat-value text-primary" id="valNetProfit" style="font-size: 2rem;">฿0.00</div>
+                </div>
+            </div>
+
+            <!-- Detail Breakdown -->
+            <div class="col-md-4">
+                <div class="glass-card text-center border-bottom border-5 border-secondary p-3">
+                    <h6 class="text-muted fw-bold mb-2">รับเงินสด (Cash)</h6>
+                    <div class="stat-value text-dark" id="valCash" style="font-size: 1.8rem;">฿0.00</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="glass-card text-center border-bottom border-5 border-info p-3">
+                    <h6 class="text-muted fw-bold mb-2">รับเงินโอน (Transfer)</h6>
+                    <div class="stat-value text-info" id="valTransfer" style="font-size: 1.8rem;">฿0.00</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="glass-card text-center border-bottom border-5 border-warning p-3">
+                    <h6 class="text-muted fw-bold mb-2">ยอดขายเครื่องดื่มชง (Brewed Drinks)</h6>
+                    <div class="stat-value text-warning text-dark" id="valBrewed" style="font-size: 1.8rem;">฿0.00</div>
                 </div>
             </div>
         </div>
@@ -134,6 +154,9 @@
             // Update Stats
             document.getElementById('valRevenue').innerText = fmt(data.total_revenue);
             document.getElementById('valExpenses').innerText = fmt(data.total_expenses);
+            document.getElementById('valCash').innerText = fmt(data.cash_total);
+            document.getElementById('valTransfer').innerText = fmt(data.transfer_total);
+            document.getElementById('valBrewed').innerText = fmt(data.brewed_total);
             
             const profitEl = document.getElementById('valNetProfit');
             profitEl.innerText = fmt(data.net_profit);
