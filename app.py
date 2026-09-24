@@ -528,6 +528,13 @@ def get_reports():
     sales_query = "SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status != 'ยกเลิกบิล'"
     expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE 1=1"
     recent_sales_query = "SELECT * FROM Sales WHERE 1=1"
+    item_sales_query = """
+        SELECT p.name, SUM(si.qty) as total_qty, SUM(si.qty * si.price) as total_amount
+        FROM Sale_Items si
+        JOIN Sales s ON si.sale_id = s.id
+        JOIN Products_Services p ON si.product_id = p.id
+        WHERE s.payment_status != 'ยกเลิกบิล'
+    """
     
     params = []
     
@@ -541,6 +548,9 @@ def get_reports():
         sales_query += date_filter
         expenses_query += date_filter
         recent_sales_query += date_filter
+        
+        # for join query
+        item_sales_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
         
         # params for each query
         params = [start, end]
@@ -557,6 +567,10 @@ def get_reports():
     recent_sales_query += " ORDER BY timestamp DESC LIMIT 100" # Increase limit if filtering by date
     recent_sales = conn.execute(recent_sales_query, params).fetchall()
     
+    # Itemized Sales Summary
+    item_sales_query += " GROUP BY p.id ORDER BY total_amount DESC"
+    item_sales = conn.execute(item_sales_query, params).fetchall()
+    
     conn.close()
     
     net_profit = total_revenue - total_expenses
@@ -565,7 +579,8 @@ def get_reports():
         "total_revenue": total_revenue,
         "total_expenses": total_expenses,
         "net_profit": net_profit,
-        "recent_sales": [dict(ix) for ix in recent_sales]
+        "recent_sales": [dict(ix) for ix in recent_sales],
+        "item_sales": [dict(ix) for ix in item_sales]
     })
 
 if __name__ == '__main__':

@@ -64,9 +64,31 @@
             </div>
         </div>
 
-        <!-- Recent Sales Table -->
-        <div class="row">
-            <div class="col-12">
+        <!-- Tables -->
+        <div class="row g-4">
+            <!-- Itemized Sales Table -->
+            <div class="col-md-6">
+                <div class="glass-card">
+                    <h5 class="fw-bold mb-3" id="itemSalesTitle">สรุปยอดขายแยกตามสินค้า</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ชื่อสินค้า</th>
+                                    <th class="text-center">จำนวนที่ขายได้</th>
+                                    <th class="text-end">เป็นเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemSalesTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Sales Table -->
+            <div class="col-md-6">
                 <div class="glass-card">
                     <h5 class="fw-bold mb-3" id="salesTableTitle">ประวัติการขายล่าสุด (100 รายการล่าสุด)</h5>
                     <div class="table-responsive">
@@ -75,7 +97,7 @@
                                 <tr>
                                     <th>รหัสบิล</th>
                                     <th>วันเวลาที่ขาย</th>
-                                    <th>ช่องทางชำระเงิน</th>
+                                    <th>สถานะ</th>
                                     <th class="text-end">ยอดเงิน</th>
                                     <th class="text-center">จัดการ</th>
                                 </tr>
@@ -120,34 +142,54 @@
                 profitEl.classList.add('text-danger');
             }
             
-            // Update Table
+            // Update Table - Item Sales
+            const itemTbody = document.getElementById('itemSalesTable');
+            itemTbody.innerHTML = '';
+            if (data.item_sales && data.item_sales.length > 0) {
+                data.item_sales.forEach(item => {
+                    let row = `<tr>
+                        <td class="fw-bold text-dark">${item.name}</td>
+                        <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${item.total_qty}</span></td>
+                        <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
+                    </tr>`;
+                    itemTbody.innerHTML += row;
+                });
+            } else {
+                itemTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
+            }
+            
+            // Update Table - Recent Sales
             const tbody = document.getElementById('salesTable');
             tbody.innerHTML = '';
             
-            data.recent_sales.forEach(s => {
-                const d = new Date(s.timestamp).toLocaleString('th-TH');
-                let badgeColor = 'secondary';
-                if(s.payment_status === 'ยกเลิกบิล') badgeColor = 'danger';
-                else if(s.payment_method === 'Cash') badgeColor = 'success';
-                else if(s.payment_method === 'PromptPay') badgeColor = 'info text-dark';
-                else if(s.payment_method === 'Credit Card') badgeColor = 'warning text-dark';
+            if (data.recent_sales && data.recent_sales.length > 0) {
+                data.recent_sales.forEach(s => {
+                    const d = new Date(s.timestamp).toLocaleString('th-TH');
+                    let badgeColor = 'secondary';
+                    if(s.payment_status === 'ยกเลิกบิล') badgeColor = 'danger';
+                    else if(s.payment_method === 'Cash') badgeColor = 'success';
+                    else if(s.payment_method === 'PromptPay') badgeColor = 'info text-dark';
+                    else if(s.payment_method === 'Credit Card') badgeColor = 'warning text-dark';
 
-                const isVoided = s.payment_status === 'ยกเลิกบิล';
-                const statusText = isVoided ? 'ยกเลิกบิล' : s.payment_method;
-                const rowClass = isVoided ? 'text-decoration-line-through text-muted' : '';
+                    const isVoided = s.payment_status === 'ยกเลิกบิล';
+                    const statusText = isVoided ? 'ยกเลิกบิล' : s.payment_method;
+                    const rowClass = isVoided ? 'text-decoration-line-through text-muted' : '';
 
-                let row = `<tr class="${rowClass}">
-                    <td><small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small></td>
-                    <td>${d}</td>
-                    <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
-                    <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
-                    <td class="text-center">
-                        <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️ พิมพ์</a>
-                        ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌ ยกเลิก</button>` : ''}
-                    </td>
-                </tr>`;
-                tbody.innerHTML += row;
-            });
+                    let row = `<tr class="${rowClass}">
+                        <td><small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small></td>
+                        <td>${d}</td>
+                        <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
+                        <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
+                        <td class="text-center">
+                            <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️ พิมพ์</a>
+                            ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌ ยกเลิก</button>` : ''}
+                        </td>
+                    </tr>`;
+                    tbody.innerHTML += row;
+                });
+            } else {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">ไม่พบประวัติการขายในช่วงเวลานี้</td></tr>`;
+            }
         }
 
         async function voidSale(id) {
