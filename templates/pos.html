@@ -165,6 +165,7 @@
         function toggleRedeemPoints() {
             isRedeemingPoints = !isRedeemingPoints;
             updateRedeemBtnUI();
+            renderCart(); // re-calculate earned points
         }
 
         function updateRedeemBtnUI() {
@@ -269,6 +270,11 @@
                     earnedPoints += parseInt(item.qty);
                 }
             });
+            
+            if (isRedeemingPoints) {
+                earnedPoints = Math.max(0, earnedPoints - 1);
+            }
+            
             document.getElementById('pointsEarnedBox').innerText = `⭐ ได้รับ ${earnedPoints} แต้ม`;
         }
 

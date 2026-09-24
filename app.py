@@ -316,6 +316,11 @@ def checkout_sale():
         c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND type = "Retail"',
                   (qty, product_id))
 
+    # Adjust earned points if customer redeemed points for free drinks (10 points = 1 free drink)
+    if redeemed_points >= 10:
+        free_drinks = redeemed_points // 10
+        earned_points = max(0, earned_points - free_drinks)
+
     # 3. Add/subtract points to customer if applicable
     if customer_id and (earned_points > 0 or redeemed_points > 0):
         c.execute('UPDATE Customers SET points = points + ? - ? WHERE id = ?', (earned_points, redeemed_points, customer_id))
