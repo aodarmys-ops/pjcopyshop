@@ -98,6 +98,7 @@
                                     <th>ประเภท</th>
                                     <th>ราคาขาย</th>
                                     <th>คงเหลือ</th>
+                                    <th class="text-center">จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody id="productTable">
@@ -128,9 +129,26 @@
                             ${p.type === 'Service' ? '-' : p.stock_qty + ' ชิ้น'}
                         </span>
                     </td>
+                    <td class="text-center">
+                        ${p.type === 'Retail' ? `<button class="btn btn-sm btn-success rounded-pill px-3" onclick="addStock(${p.id}, '${p.name}')">+ เพิ่มสต๊อก</button>` : '-'}
+                    </td>
                 </tr>`;
                 tbody.innerHTML += row;
             });
+        }
+
+        async function addStock(id, name) {
+            let qty = prompt(`เพิ่มสต๊อกสำหรับ "${name}"\nจำนวนที่ต้องการรับเข้า:`, "10");
+            if(qty === null || qty === "") return;
+            qty = parseInt(qty);
+            if(isNaN(qty) || qty <= 0) return alert("กรุณาใส่ตัวเลขที่ถูกต้อง");
+
+            await fetch(`/api/products/${id}/stock`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ add_qty: qty })
+            });
+            fetchProducts();
         }
 
         document.getElementById('addProductForm').addEventListener('submit', async (e) => {

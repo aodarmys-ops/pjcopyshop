@@ -180,6 +180,22 @@ def add_product():
     conn.close()
     return jsonify({"message": "Product added successfully"}), 201
 
+@app.route('/api/products/<int:product_id>/stock', methods=['PUT'])
+def add_product_stock(product_id):
+    data = request.get_json()
+    add_qty = data.get('add_qty', 0)
+    
+    if add_qty <= 0:
+        return jsonify({"message": "Invalid quantity"}), 400
+        
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ?', (add_qty, product_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": "Stock updated successfully"})
+
 @app.route('/api/sales', methods=['POST'])
 def checkout_sale():
     data = request.get_json()
