@@ -30,8 +30,9 @@
                     <label class="form-label text-muted small fw-bold">ถึงวันที่</label>
                     <input type="date" id="endDate" class="form-control rounded-pill">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-4 d-flex gap-2">
                     <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="fetchReports()">🔍 กรองข้อมูล</button>
+                    <button class="btn btn-outline-secondary w-100 rounded-pill fw-bold" onclick="clearFilter()">❌ ล้างค่า</button>
                 </div>
             </div>
         </div>
@@ -159,6 +160,12 @@
                     alert('เกิดข้อผิดพลาดในการยกเลิกบิล');
                 }
             }
+        }
+
+        function clearFilter() {
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            fetchReports();
         }
 
         // Init
