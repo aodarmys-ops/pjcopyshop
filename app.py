@@ -56,7 +56,8 @@ def init_db():
             discount REAL DEFAULT 0,
             payment_method TEXT NOT NULL,
             payment_status TEXT DEFAULT 'Paid',
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            customer_id INTEGER
         )
     ''')
     c.execute('''
@@ -283,6 +284,7 @@ def checkout_sale():
     discount = data.get('discount', 0)
     payment_method = data.get('payment_method', 'Cash')
     payment_status = data.get('payment_status', 'Paid')
+    customer_id = data.get('customer_id')
     items = data.get('items', [])
 
     conn = get_db_connection()
@@ -290,9 +292,9 @@ def checkout_sale():
     
     # 1. Insert into Sales
     c.execute('''
-        INSERT INTO Sales (total_amount, discount, payment_method, payment_status) 
-        VALUES (?, ?, ?, ?)
-    ''', (total_amount, discount, payment_method, payment_status))
+        INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id) 
+        VALUES (?, ?, ?, ?, ?)
+    ''', (total_amount, discount, payment_method, payment_status, customer_id))
     sale_id = c.lastrowid
 
     # 2. Insert into Sale_Items and update stock
