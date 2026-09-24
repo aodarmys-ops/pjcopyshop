@@ -140,8 +140,8 @@
                         const div = document.createElement('div');
                         div.className = 'barcode-item';
                         
-                        const svg = document.createElement('svg');
-                        svg.className = 'barcode-svg';
+                        const img = document.createElement('img');
+                        img.className = 'barcode-svg';
                         
                         const title = document.createElement('div');
                         title.style.fontSize = '14px';
@@ -154,11 +154,11 @@
                         priceDiv.innerText = `฿${price}`;
                         
                         div.appendChild(title);
-                        div.appendChild(svg);
+                        div.appendChild(img);
                         div.appendChild(priceDiv);
                         printArea.appendChild(div);
                         
-                        JsBarcode(svg, barcode, {
+                        JsBarcode(img, barcode, {
                             format: "CODE128",
                             displayValue: true,
                             fontSize: 14,
