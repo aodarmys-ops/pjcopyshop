@@ -99,6 +99,38 @@ def init_db():
 def index():
     return render_template('index.html')
 
+@app.route('/inventory')
+def inventory():
+    return render_template('inventory.html')
+
+@app.route('/api/products', methods=['GET'])
+def get_products():
+    conn = get_db_connection()
+    products = conn.execute('SELECT * FROM Products_Services').fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in products])
+
+@app.route('/api/products', methods=['POST'])
+def add_product():
+    new_product = request.get_json()
+    name = new_product.get('name')
+    type = new_product.get('type')
+    barcode = new_product.get('barcode', '')
+    price = new_product.get('price', 0.0)
+    cost = new_product.get('cost', 0.0)
+    stock_qty = new_product.get('stock_qty', 0)
+    reorder_level = new_product.get('reorder_level', 5)
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO Products_Services (name, type, barcode, price, cost, stock_qty, reorder_level)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (name, type, barcode, price, cost, stock_qty, reorder_level))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Product added successfully"}), 201
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, port=5000)
