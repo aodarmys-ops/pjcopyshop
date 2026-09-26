@@ -20,6 +20,37 @@
         .cart-list { flex-grow: 1; overflow-y: auto; }
         .total-box { background: #2c3e50; color: white; border-radius: 10px; padding: 20px; text-align: right;}
     </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
 </head>
 <body class="p-3">
     <div class="row g-3 h-100">
@@ -71,7 +102,7 @@
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <span class="fw-bold text-muted">ส่วนลดท้ายบิล (Discount) ฿</span>
+                        <span class="fw-bold text-muted">ส่วนลดท้ายบิล (Discount) </span>
                         <input type="number" step="0.01" min="0" class="form-control text-end w-50 fw-bold" id="discountInput" value="0" onchange="renderCart()">
                     </div>
 
@@ -80,7 +111,7 @@
                             <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
                             <small class="text-warning fw-bold" id="pointsEarnedBox">⭐ ได้รับ 0 แต้ม</small>
                         </div>
-                        <h1 class="m-0 fw-bold text-warning" id="totalAmount">฿0.00</h1>
+                        <h1 class="m-0 fw-bold text-warning" id="totalAmount">0.00</h1>
                     </div>
 
                     <div class="row g-2 mb-3">
@@ -199,7 +230,7 @@
                             <div class="card h-100 shadow-sm border-0 bg-light" style="cursor:pointer;" onclick='addToCart(${JSON.stringify(p).replace(/'/g, "&apos;")})'>
                                 <div class="card-body text-center p-3">
                                     <h6 class="card-title fw-bold m-0 text-dark">${p.name}</h6>
-                                    <small class="text-primary fw-bold">฿${p.price.toFixed(2)}</small>
+                                    <small class="text-primary fw-bold">${formatMoney(p.price)}</small>
                                 </div>
                             </div>
                         </div>
@@ -241,7 +272,7 @@
                         </td>
                         <td style="width: 100px;">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text">฿</span>
+                                <span class="input-group-text"></span>
                                 <input type="number" step="0.01" class="form-control text-center fw-bold" value="${item.price}" onchange="updatePrice(${item.id}, this.value)">
                             </div>
                         </td>
@@ -250,7 +281,7 @@
                                 <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.id}, this.value)">
                             </div>
                         </td>
-                        <td class="text-end fw-bold text-dark">฿${subtotal.toFixed(2)}</td>
+                        <td class="text-end fw-bold text-dark">${formatMoney(subtotal)}</td>
                         <td class="text-end" style="width: 40px;">
                             <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="removeFromCart(${item.id})">✖</button>
                         </td>
@@ -261,7 +292,7 @@
             const discount = parseFloat(document.getElementById('discountInput').value) || 0;
             const netTotal = Math.max(0, subtotalSum - discount);
             
-            document.getElementById('totalAmount').innerText = `฿${netTotal.toFixed(2)}`;
+            document.getElementById('totalAmount').innerText = `${formatMoney(netTotal)}`;
 
             // Calculate points
             let earnedPoints = 0;
@@ -353,5 +384,114 @@
         // Init
         loadCustomers();
     </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
 </body>
 </html>

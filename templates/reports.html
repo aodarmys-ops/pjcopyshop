@@ -13,6 +13,37 @@
         .table-responsive { max-height: 350px; overflow-y: auto; }
         .table-responsive thead th { position: sticky; top: 0; background-color: #f8f9fa; z-index: 1; }
     </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
 </head>
 <body>
     <div class="container">
@@ -39,49 +70,94 @@
             </div>
         </div>
         
-        <!-- Dashboard Stats -->
-        <div class="row g-3 mb-4">
-            <!-- Revenue -->
-            <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-success p-3">
-                    <h6 class="text-muted fw-bold mb-2">ยอดขายรวม (Total Revenue)</h6>
-                    <div class="stat-value text-success" id="valRevenue" style="font-size: 2rem;">฿0.00</div>
-                </div>
-            </div>
-            
-            <!-- Expenses -->
-            <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-danger p-3">
-                    <h6 class="text-muted fw-bold mb-2">รายจ่ายรวม (Total Expenses)</h6>
-                    <div class="stat-value text-danger" id="valExpenses" style="font-size: 2rem;">฿0.00</div>
-                </div>
-            </div>
-            
-            <!-- Net Profit -->
-            <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-primary p-3">
-                    <h6 class="text-muted fw-bold mb-2">กำไรสุทธิ (Net Profit)</h6>
-                    <div class="stat-value text-primary" id="valNetProfit" style="font-size: 2rem;">฿0.00</div>
+        <!-- Financial Dashboards -->
+        <div class="row g-4 mb-4">
+            <!-- Profit & Loss Dashboard -->
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100" style="border-top: 5px solid #0d6efd !important; border-radius: 10px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-primary mb-1"><span class="fs-4">📈</span> มุมมองกำไรขาดทุน (Profit & Loss)</h5>
+                        <small class="text-muted d-block mb-4">สะท้อนผลประกอบการว่า "ธุรกิจมีกำไรหรือไม่" (ตามหลักบัญชี)</small>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">ยอดขายรวม (New Sales)</span>
+                            <span class="fw-bold text-success fs-5" id="valRevenue">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: ต้นทุนสินค้าขาย (Cost of Goods)</span>
+                            <span class="fw-bold text-danger fs-5" id="valCostOfGoods">-0.00</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">หัก: รายจ่ายดำเนินงาน (Expenses)</span>
+                            <span class="fw-bold text-danger fs-5" id="valExpenses">-0.00</span>
+                        </div>
+                        
+                        <hr class="mt-auto mb-4">
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="fw-bold m-0 text-dark">กำไรสุทธิ (Net Profit)</h4>
+                            <h2 class="fw-bold m-0" id="valNetProfit">0.00</h2>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Detail Breakdown -->
+            <!-- Cash Flow Dashboard -->
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100" style="border-top: 5px solid #198754 !important; border-radius: 10px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-success mb-1"><span class="fs-4">💸</span> มุมมองกระแสเงินสด (Cash Flow)</h5>
+                        <small class="text-muted d-block mb-4">สะท้อนการเข้า-ออกของเงิน ว่า "มีเงินเหลือในมือเท่าไหร่"</small>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">รับเงินสด (Cash In)</span>
+                            <span class="fw-bold text-success fs-5" id="valCashFlowIn">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">รับเงินโอน / ช่องทางอื่นๆ</span>
+                            <span class="fw-bold text-success fs-5" id="valTransferIn">0.00</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: ซื้อสินค้าเข้าสต๊อก (Purchases)</span>
+                            <span class="fw-bold text-danger fs-5" id="valPurchasesOut">-0.00</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">หัก: จ่ายบิลต่างๆ (Expenses)</span>
+                            <span class="fw-bold text-danger fs-5" id="valExpensesOut">-0.00</span>
+                        </div>
+                        
+                        <hr class="mt-auto mb-4">
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="fw-bold m-0 text-dark">เงินสดคงเหลือสุทธิ (Net Cash)</h4>
+                            <h2 class="fw-bold m-0" id="valNetCashFlow">0.00</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row g-3 mb-4">
             <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-secondary p-3">
-                    <h6 class="text-muted fw-bold mb-2">รับเงินสด (Cash)</h6>
-                    <div class="stat-value text-dark" id="valCash" style="font-size: 1.8rem;">฿0.00</div>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #333 !important;">
+                    <small class="text-muted fw-bold mb-2">รับเงินสด</small>
+                    <h4 class="fw-bold m-0" id="valCash">0.00</h4>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-info p-3">
-                    <h6 class="text-muted fw-bold mb-2">รับเงินโอน (Transfer)</h6>
-                    <div class="stat-value text-info" id="valTransfer" style="font-size: 1.8rem;">฿0.00</div>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #0dcaf0 !important;">
+                    <small class="text-muted fw-bold mb-2">รับเงินโอน</small>
+                    <h4 class="fw-bold m-0 text-info" id="valTransfer">0.00</h4>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="glass-card text-center border-bottom border-5 border-warning p-3">
-                    <h6 class="text-muted fw-bold mb-2">ยอดขายเครื่องดื่มชง (Brewed Drinks)</h6>
-                    <div class="stat-value text-warning text-dark" id="valBrewed" style="font-size: 1.8rem;">฿0.00</div>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #0d6efd !important;">
+                    <small class="text-muted fw-bold mb-2">รับชำระบิลค้าง</small>
+                    <h4 class="fw-bold m-0 text-primary" id="valPaidUnpaid">0.00</h4>
                 </div>
             </div>
         </div>
@@ -125,6 +201,8 @@
                             <tbody id="itemSalesTable">
                                 <!-- Data rendered by JS -->
                             </tbody>
+                            <tfoot id="itemSalesFooter" class="table-light">
+                            </tfoot>
                         </table>
                     </div>
                 </div>
@@ -175,7 +253,7 @@
         let salesPageSize = 10;
         
         // Format Currency
-        const fmt = (num) => '฿' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const fmt = (num) => '' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
         async function fetchReports() {
             const startDate = document.getElementById('startDate').value;
@@ -193,17 +271,51 @@
             const data = await res.json();
             
             // Update Stats
-            document.getElementById('valRevenue').innerText = fmt(data.total_revenue);
-            document.getElementById('valExpenses').innerText = fmt(data.total_expenses);
+            const revenue = parseFloat(data.total_revenue) || 0;
+            const cost = parseFloat(data.total_cost) || 0;
+            const expenses = parseFloat(data.total_expenses) || 0;
+            const netProfit = revenue - cost - expenses;
+
+            // Note: The user requested NO ฿ symbol and use fmt() which uses commas and 2 decimals.
+            // We prepend with '-' manually for negative visualizations where appropriate.
+            document.getElementById('valRevenue').innerText = fmt(revenue);
+            document.getElementById('valCostOfGoods').innerText = cost > 0 ? "-" + fmt(cost) : "0.00";
+            document.getElementById('valExpenses').innerText = expenses > 0 ? "-" + fmt(expenses) : "0.00";
+            
             document.getElementById('valCash').innerText = fmt(data.cash_total);
             document.getElementById('valTransfer').innerText = fmt(data.transfer_total);
-            document.getElementById('valBrewed').innerText = fmt(data.brewed_total);
+            document.getElementById('valPaidUnpaid').innerText = fmt(data.paid_unpaid_total || 0);
             
+            
+            // Cash Flow Calculation
+            const cashIn = parseFloat(data.cash_total) || 0;
+            const transferIn = (parseFloat(data.transfer_total) || 0) + (parseFloat(data.paid_unpaid_total) || 0);
+            const purchases = parseFloat(data.total_purchases) || 0;
+            const netCashFlow = cashIn + transferIn - purchases - expenses;
+
+            document.getElementById('valCashFlowIn').innerText = fmt(cashIn);
+            document.getElementById('valTransferIn').innerText = fmt(transferIn);
+            document.getElementById('valPurchasesOut').innerText = purchases > 0 ? "-" + fmt(purchases) : "0.00";
+            document.getElementById('valExpensesOut').innerText = expenses > 0 ? "-" + fmt(expenses) : "0.00";
+
+            const cashEl = document.getElementById('valNetCashFlow');
+            cashEl.innerText = fmt(netCashFlow);
+            if(netCashFlow < 0) {
+                cashEl.classList.remove('text-success');
+                cashEl.classList.add('text-danger');
+            } else {
+                cashEl.classList.remove('text-danger');
+                cashEl.classList.add('text-success');
+            }
+
             const profitEl = document.getElementById('valNetProfit');
-            profitEl.innerText = fmt(data.net_profit);
-            if(data.net_profit < 0) {
-                profitEl.classList.remove('text-primary');
+            profitEl.innerText = fmt(netProfit);
+            if(netProfit < 0) {
+                profitEl.classList.remove('text-success');
                 profitEl.classList.add('text-danger');
+            } else {
+                profitEl.classList.remove('text-danger');
+                profitEl.classList.add('text-success');
             }
             
             // Update Table - Item Sales
@@ -216,6 +328,8 @@
             brewedTfoot.innerHTML = '';
             
             let totalBrewedQty = 0;
+            let totalItemQty = 0;
+            let totalItemAmount = 0;
             
             if (data.item_sales && data.item_sales.length > 0) {
                 const regularItems = data.item_sales.filter(i => i.type !== 'Brewed Drink');
@@ -224,6 +338,8 @@
                 // Regular Items
                 if (regularItems.length > 0) {
                     regularItems.forEach(item => {
+                        totalItemQty += parseInt(item.total_qty);
+                        totalItemAmount += parseFloat(item.total_amount);
                         let row = `<tr>
                             <td class="fw-bold text-dark">${item.name}</td>
                             <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${item.total_qty}</span></td>
@@ -253,6 +369,20 @@
             } else {
                 itemTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
                 brewedTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
+            }
+
+            // Render general items footer
+            const itemTfoot = document.getElementById('itemSalesFooter');
+            if (totalItemQty > 0) {
+                itemTfoot.innerHTML = `
+                    <tr class="fs-5">
+                        <td class="text-end text-dark fw-bold">รวมทั้งหมด:</td>
+                        <td class="text-center fw-bold text-primary">${totalItemQty}</td>
+                        <td class="text-end fw-bold text-success">${fmt(totalItemAmount)}</td>
+                    </tr>
+                `;
+            } else {
+                itemTfoot.innerHTML = '';
             }
 
             // Render free drinks breakdown
@@ -310,7 +440,7 @@
                 const pageData = allRecentSales.slice(startIdx, endIdx);
 
                 pageData.forEach(s => {
-                    const d = new Date(s.timestamp).toLocaleString('th-TH');
+                    const d = formatThaiDate(s.timestamp);
                     let badgeColor = 'secondary';
                     if(s.payment_status === 'ยกเลิกบิล') badgeColor = 'danger';
                     else if(s.payment_method === 'Cash') badgeColor = 'success';
@@ -385,5 +515,114 @@
         // Init
         fetchReports();
     </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
 </body>
 </html>

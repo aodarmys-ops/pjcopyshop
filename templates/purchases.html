@@ -14,6 +14,37 @@
         #barcodeInput:focus { border-color: #2a5298; box-shadow: none; }
         .table-responsive { flex-grow: 1; overflow-y: auto; max-height: 400px; }
     </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
 </head>
 <body>
     <div class="container">
@@ -26,12 +57,13 @@
             <!-- Left: Add Items -->
             <div class="col-md-7">
                 <div class="glass-card">
-                    <div class="mb-3">
+                    <div class="mb-3 position-relative">
                         <label class="form-label text-muted small fw-bold">สแกนบาร์โค้ด หรือ พิมพ์ชื่อสินค้า</label>
                         <form id="searchForm" class="d-flex">
                             <input type="text" class="form-control" id="barcodeInput" placeholder="สแกน หรือ ค้นหา..." autocomplete="off">
-                            <button type="submit" class="btn btn-primary ms-2 rounded-pill px-4">ค้นหา</button>
+                            <button type="submit" class="btn btn-primary ms-2 rounded-pill px-4 d-none">ค้นหา</button>
                         </form>
+                        <ul id="purchaseAutocomplete" class="list-group position-absolute w-100 shadow mt-1" style="z-index: 1000; display: none; max-height: 250px; overflow-y: auto; cursor: pointer;"></ul>
                     </div>
                     
                     <div class="table-responsive">
@@ -73,16 +105,16 @@
 
                         <div class="d-flex justify-content-between mb-2 text-muted">
                             <span>ยอดรวมก่อน VAT (Subtotal)</span>
-                            <span id="subtotalDisplay">฿0.00</span>
+                            <span id="subtotalDisplay">0.00</span>
                         </div>
                         <div class="d-flex justify-content-between mb-3 text-muted">
                             <span>ภาษีมูลค่าเพิ่ม 7% (VAT)</span>
-                            <span id="vatDisplay">฿0.00</span>
+                            <span id="vatDisplay">0.00</span>
                         </div>
 
                         <div class="total-box mb-3 shadow">
                             <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
-                            <h1 class="m-0 fw-bold text-warning" id="totalAmount">฿0.00</h1>
+                            <h1 class="m-0 fw-bold text-warning" id="totalAmount">0.00</h1>
                         </div>
 
                         <button class="btn btn-primary btn-lg w-100 fw-bold rounded-pill shadow" onclick="checkout()">
@@ -97,26 +129,62 @@
     <script>
         let cart = [];
 
+        const bInput = document.getElementById('barcodeInput');
+        const acList = document.getElementById('purchaseAutocomplete');
+
+        bInput.addEventListener('input', async (e) => {
+            const q = e.target.value.trim();
+            if(!q) {
+                acList.style.display = 'none';
+                return;
+            }
+            const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}`);
+            const products = await res.json();
+            
+            acList.innerHTML = '';
+            if(products.length > 0) {
+                products.forEach(p => {
+                    let li = document.createElement('li');
+                    li.className = 'list-group-item list-group-item-action cursor-pointer';
+                    li.innerHTML = `<strong>${p.name}</strong> <small class="text-muted ms-1">[${p.barcode || 'ไม่มีบาร์โค้ด'}]</small>`;
+                    li.onclick = () => {
+                        addToCart(p);
+                        bInput.value = '';
+                        acList.style.display = 'none';
+                        bInput.focus();
+                    };
+                    acList.appendChild(li);
+                });
+                acList.style.display = 'block';
+            } else {
+                acList.style.display = 'none';
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if(!bInput.contains(e.target) && !acList.contains(e.target)) {
+                acList.style.display = 'none';
+            }
+        });
+
         document.getElementById('searchForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const q = document.getElementById('barcodeInput').value.trim();
+            const q = bInput.value.trim();
             if (!q) return;
 
-            const res = await fetch(`/api/products/search?q=${q}`);
+            const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}`);
             const products = await res.json();
             
             if (products.length === 1) {
                 addToCart(products[0]);
+                bInput.value = '';
+                acList.style.display = 'none';
+                bInput.focus();
             } else if (products.length > 1) {
-                // If multiple matches (like typing "Paper"), just add the first one for simplicity, 
-                // in a real app you'd show a modal to select.
-                addToCart(products[0]); 
+                bInput.dispatchEvent(new Event('input'));
             } else {
                 alert("ไม่พบสินค้า!");
             }
-            
-            document.getElementById('barcodeInput').value = '';
-            document.getElementById('barcodeInput').focus();
         });
 
         function addToCart(product) {
@@ -163,14 +231,14 @@
                         </td>
                         <td style="width: 120px;">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text">฿</span>
+                                <span class="input-group-text"></span>
                                 <input type="number" step="0.01" min="0" class="form-control text-center fw-bold text-primary" value="${item.cost_per_pack}" onchange="updateCart(${item.id}, 'cost', this.value)">
                             </div>
                         </td>
                         <td class="text-center text-muted fw-bold">
-                            ฿${costPerPiece.toFixed(2)}
+                            ${formatMoney(costPerPiece)}
                         </td>
-                        <td class="text-end fw-bold text-dark">฿${itemTotal.toFixed(2)}</td>
+                        <td class="text-end fw-bold text-dark">${formatMoney(itemTotal)}</td>
                         <td class="text-end" style="width: 40px;">
                             <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="removeFromCart(${item.id})">✖</button>
                         </td>
@@ -182,9 +250,9 @@
             const vatAmount = hasVat ? subtotal * 0.07 : 0;
             const netTotal = subtotal + vatAmount;
 
-            document.getElementById('subtotalDisplay').innerText = `฿${subtotal.toFixed(2)}`;
-            document.getElementById('vatDisplay').innerText = `฿${vatAmount.toFixed(2)}`;
-            document.getElementById('totalAmount').innerText = `฿${netTotal.toFixed(2)}`;
+            document.getElementById('subtotalDisplay').innerText = `${formatMoney(subtotal)}`;
+            document.getElementById('vatDisplay').innerText = `${formatMoney(vatAmount)}`;
+            document.getElementById('totalAmount').innerText = `${formatMoney(netTotal)}`;
         }
 
         function updateCart(id, field, value) {
@@ -243,5 +311,114 @@
             }
         }
     </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
 </body>
 </html>

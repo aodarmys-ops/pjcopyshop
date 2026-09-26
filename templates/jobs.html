@@ -11,6 +11,37 @@
         .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 20px; }
         .status-badge { cursor: pointer; }
     </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
 </head>
 <body>
     <div class="container">
@@ -50,6 +81,7 @@
                                     <th>ลูกค้า</th>
                                     <th>รายละเอียด</th>
                                     <th>สถานะ</th>
+                                    <th>จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody id="jobTable">
@@ -62,48 +94,256 @@
         </div>
     </div>
 
-    <script>
-        const statusColors = {
-            'รอคิว': 'danger',
-            'กำลังทำ': 'warning text-dark',
-            'เสร็จแล้วรอรับ': 'success'
-        };
+    <!-- Payment Modal -->
+    <div class="modal fade" id="paymentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">💰 ส่งมอบและชำระเงิน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="payJobId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">ระบุสินค้าที่จะตัดสต๊อก (ทางเลือก)</label>
+                        <form id="searchProductForm" class="d-flex mb-2 position-relative">
+                            <input type="text" class="form-control" id="productSearchInput" placeholder="สแกนบาร์โค้ด หรือพิมพ์ชื่อ..." autocomplete="off">
+                            <button type="submit" class="btn btn-secondary ms-2 rounded-pill px-3">เพิ่ม</button>
+                            <!-- Autocomplete Dropdown -->
+                            <div id="productSuggestions" class="list-group position-absolute w-100 shadow-sm d-none" style="top: 100%; left: 0; z-index: 1050; max-height: 200px; overflow-y: auto;">
+                            </div>
+                        </form>
+                        <ul id="miniCartList" class="list-group mb-2" style="max-height: 150px; overflow-y: auto;">
+                            <!-- items -->
+                        </ul>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">ยอดสุทธิที่ต้องชำระ (บาท)</label>
+                        <input type="number" class="form-control form-control-lg text-primary fw-bold" id="payAmount" value="0" min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">ส่วนลด (ถ้ามี)</label>
+                        <input type="number" class="form-control" id="payDiscount" value="0" min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">วิธีชำระเงิน</label>
+                        <select class="form-select" id="payMethod">
+                            <option value="Cash">เงินสด (Cash)</option>
+                            <option value="PromptPay">เงินโอน / พร้อมเพย์</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="submitPayment()">✅ ยืนยันรับเงิน</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-        const nextStatus = {
-            'รอคิว': 'กำลังทำ',
-            'กำลังทำ': 'เสร็จแล้วรอรับ',
-            'เสร็จแล้วรอรับ': 'รอคิว'
-        };
+    <script>
+        let paymentModal;
 
         async function fetchJobs() {
             const res = await fetch('/api/jobs');
             const data = await res.json();
             const tbody = document.getElementById('jobTable');
             tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">🎉 ตอนนี้คิวงานว่างแล้ว!</td></tr>`;
+                return;
+            }
+
             data.forEach(j => {
-                const color = statusColors[j.status] || 'secondary';
                 let row = `<tr>
                     <td><small class="text-muted fw-bold">#JOB-${String(j.id).padStart(4, '0')}</small></td>
                     <td class="fw-bold">${j.customer_name}</td>
                     <td>${j.details}</td>
                     <td>
-                        <span class="badge rounded-pill bg-${color} status-badge p-2" onclick="toggleStatus(${j.id}, '${j.status}')" title="คลิกเพื่อเปลี่ยนสถานะ">
-                            ${j.status}
+                        <span class="badge rounded-pill bg-primary p-2 shadow-sm">
+                            📦 ${j.status}
                         </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3 mb-1" onclick="openPayment(${j.id})">💰 รับเงิน</button>
+                        <button class="btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-bold px-3" onclick="cancelJob(${j.id})">❌ ยกเลิก</button>
                     </td>
                 </tr>`;
                 tbody.innerHTML += row;
             });
         }
+        
+        async function cancelJob(id) {
+            if(confirm("แน่ใจหรือไม่ว่าต้องการยกเลิกคิวงานนี้?")) {
+                await fetch(`/api/jobs/${id}/cancel`, { method: 'POST' });
+                fetchJobs();
+            }
+        }
 
-        async function toggleStatus(id, currentStatus) {
-            const newStatus = nextStatus[currentStatus];
-            await fetch(`/api/jobs/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
+
+        
+        let miniCart = [];
+
+        function renderMiniCart() {
+            const list = document.getElementById('miniCartList');
+            list.innerHTML = '';
+            let total = 0;
+            miniCart.forEach((item, index) => {
+                total += (item.price * item.qty);
+                list.innerHTML += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div style="flex:1;">
+                            <small class="fw-bold">${item.name}</small>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <input type="number" class="form-control form-control-sm text-center mx-2" style="width: 60px;" value="${item.qty}" min="1" onchange="updateMiniCartQty(${index}, this.value)">
+                            <button class="btn btn-sm btn-outline-danger border-0" onclick="removeMiniCartItem(${index})">🗑</button>
+                        </div>
+                    </li>
+                `;
             });
-            fetchJobs();
+            if(miniCart.length > 0) {
+                document.getElementById('payAmount').value = total;
+            }
+        }
+
+        function updateMiniCartQty(index, qty) {
+            miniCart[index].qty = parseInt(qty) || 1;
+            renderMiniCart();
+        }
+
+        function removeMiniCartItem(index) {
+            miniCart.splice(index, 1);
+            renderMiniCart();
+        }
+
+        document.getElementById('searchProductForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('productSearchInput');
+            const query = input.value.trim();
+            if (!query) return;
+
+            const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+            const products = await res.json();
+            
+            if (products.length > 0) {
+                // If form is submitted (e.g. by pressing Enter via scanner), just take the first match
+                addProductToMiniCart(products[0]);
+                input.value = '';
+                document.getElementById('productSuggestions').classList.add('d-none');
+            } else {
+                alert('ไม่พบสินค้า!');
+            }
+        });
+
+        function addProductToMiniCart(p) {
+            const existing = miniCart.find(i => i.id === p.id);
+            if (existing) {
+                existing.qty += 1;
+            } else {
+                miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1 });
+            }
+            renderMiniCart();
+        }
+
+        // Autocomplete functionality
+        let searchTimeout = null;
+        document.getElementById('productSearchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            const suggestionsBox = document.getElementById('productSuggestions');
+            
+            if (!query) {
+                suggestionsBox.classList.add('d-none');
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+                const products = await res.json();
+                
+                suggestionsBox.innerHTML = '';
+                if (products.length > 0) {
+                    products.forEach(p => {
+                        const item = document.createElement('button');
+                        item.type = 'button';
+                        item.className = 'list-group-item list-group-item-action text-start';
+                        item.innerHTML = `<strong>${p.name}</strong> <small class="text-muted ms-1">[${p.barcode || 'ไม่มีบาร์โค้ด'}]</small> <span class="float-end text-success">${formatMoney(p.price)}</span>`;
+                        item.onclick = () => {
+                            addProductToMiniCart(p);
+                            document.getElementById('productSearchInput').value = '';
+                            suggestionsBox.classList.add('d-none');
+                            document.getElementById('productSearchInput').focus();
+                        };
+                        suggestionsBox.appendChild(item);
+                    });
+                    suggestionsBox.classList.remove('d-none');
+                } else {
+                    suggestionsBox.innerHTML = '<div class="list-group-item text-muted text-center">ไม่พบสินค้า</div>';
+                    suggestionsBox.classList.remove('d-none');
+                }
+            }, 300); // 300ms debounce
+        });
+        
+        // Hide autocomplete when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#searchProductForm')) {
+                document.getElementById('productSuggestions').classList.add('d-none');
+            }
+        });
+
+        function openPayment(id) {
+            document.getElementById('payJobId').value = id;
+            document.getElementById('payAmount').value = '';
+            document.getElementById('payDiscount').value = '0';
+            document.getElementById('payMethod').value = 'Cash';
+            miniCart = [];
+            renderMiniCart();
+            
+            if (!paymentModal) {
+                paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+            }
+            paymentModal.show();
+            
+            // Focus search input after modal is shown
+            document.getElementById('paymentModal').addEventListener('shown.bs.modal', function () {
+                document.getElementById('productSearchInput').focus();
+            }, { once: true });
+        }
+
+        async function submitPayment() {
+            const id = document.getElementById('payJobId').value;
+            const amount = parseFloat(document.getElementById('payAmount').value) || 0;
+            const discount = parseFloat(document.getElementById('payDiscount').value) || 0;
+            const method = document.getElementById('payMethod').value;
+            
+            if (amount <= 0 && miniCart.length === 0) {
+                alert("กรุณากรอกยอดเงินสุทธิที่ถูกต้อง");
+                return;
+            }
+
+            const res = await fetch(`/api/jobs/${id}/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    total_amount: amount,
+                    discount: discount,
+                    payment_method: method,
+                    items: miniCart
+                })
+            });
+            
+            if (res.ok) {
+                paymentModal.hide();
+                fetchJobs();
+            } else {
+                alert("เกิดข้อผิดพลาดในการบันทึก");
+            }
         }
 
         document.getElementById('addJobForm').addEventListener('submit', async (e) => {
@@ -126,5 +366,114 @@
         // Init
         fetchJobs();
     </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
 </body>
 </html>

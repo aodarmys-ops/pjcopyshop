@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from flask import Flask, jsonify, request, render_template
 import sqlite3
 
@@ -113,6 +114,18 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Stock_WriteOffs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            qty INTEGER NOT NULL,
+            reason TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(product_id) REFERENCES Products_Services(id)
+        )
+    ''')
+    
     # Customers
     c.execute('''
         CREATE TABLE IF NOT EXISTS Customers (
@@ -166,8 +179,8 @@ def search_product():
     query = request.args.get('q', '')
     conn = get_db_connection()
     products = conn.execute(
-        'SELECT * FROM Products_Services WHERE barcode = ? OR name LIKE ?',
-        (query, f'%{query}%')
+        'SELECT * FROM Products_Services WHERE barcode LIKE ? OR name LIKE ?',
+        (f'%{query}%', f'%{query}%')
     ).fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in products])
@@ -278,6 +291,50 @@ def edit_product_price(product_id):
     
     return jsonify({"message": "Product price updated successfully"})
 
+@app.route('/api/inventory/writeoff', methods=['POST'])
+def writeoff_stock():
+    data = request.get_json()
+    product_id = data.get('product_id')
+    qty = data.get('qty', 0)
+    reason = data.get('reason', 'ชำรุด')
+    
+    if not product_id or qty <= 0:
+        return jsonify({"message": "Invalid data"}), 400
+        
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, product_id))
+    c.execute('INSERT INTO Stock_WriteOffs (product_id, qty, reason) VALUES (?, ?, ?)', (product_id, qty, reason))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Stock written off successfully"})
+
+@app.route('/api/inventory/writeoff', methods=['GET'])
+def get_writeoff_history():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    query = '''
+        SELECT w.id, w.qty, w.reason, w.timestamp, p.name, p.barcode
+        FROM Stock_WriteOffs w
+        JOIN Products_Services p ON w.product_id = p.id
+        WHERE 1=1
+    '''
+    params = []
+    
+    if start_date and end_date:
+        query += " AND w.timestamp >= ? AND w.timestamp <= ?"
+        params.extend([f"{start_date} 00:00:00", f"{end_date} 23:59:59"])
+        
+    query += " ORDER BY w.timestamp DESC"
+    
+    history = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in history])
+
 @app.route('/api/sales', methods=['POST'])
 def checkout_sale():
     data = request.get_json()
@@ -345,9 +402,8 @@ def void_sale(sale_id):
     items = c.execute("SELECT product_id, qty FROM Sale_Items WHERE sale_id = ?", (sale_id,)).fetchall()
     
     for item in items:
-        # We only return stock for Retail type (which is managed by stock_qty)
-        # Actually, adding stock back to any product won't hurt if it's a Service (it stays 0 usually, but let's be safe)
-        c.execute('UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ? AND type = "Retail"',
+        # Return stock for all product types except 'Service'
+        c.execute("UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ? AND type != 'Service'",
                   (item['qty'], item['product_id']))
                   
     # Mark as voided
@@ -358,6 +414,38 @@ def void_sale(sale_id):
     return jsonify({"message": "Sale voided successfully"})
 
 # --- Purchasing / Procurement ---
+@app.route('/api/purchases', methods=['GET'])
+def get_purchases():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    query = "SELECT * FROM Purchases WHERE 1=1"
+    params = []
+    
+    if start_date and end_date:
+        query += " AND timestamp >= ? AND timestamp <= ?"
+        params.extend([f"{start_date} 00:00:00", f"{end_date} 23:59:59"])
+        
+    query += " ORDER BY timestamp DESC LIMIT 50"
+    
+    purchases = conn.execute(query, params).fetchall()
+    
+    result = []
+    for p in purchases:
+        purchase = dict(p)
+        items = conn.execute('''
+            SELECT pi.*, ps.name 
+            FROM Purchase_Items pi 
+            JOIN Products_Services ps ON pi.product_id = ps.id 
+            WHERE pi.purchase_id = ?
+        ''', (p['id'],)).fetchall()
+        purchase['items'] = [dict(i) for i in items]
+        result.append(purchase)
+        
+    conn.close()
+    return jsonify(result)
+
 @app.route('/api/purchases', methods=['POST'])
 def add_purchase():
     data = request.get_json()
@@ -391,14 +479,23 @@ def add_purchase():
         c.execute('INSERT INTO Purchase_Items (purchase_id, product_id, qty, cost_price) VALUES (?, ?, ?, ?)',
                   (purchase_id, product_id, qty, cost))
         
-        # Add stock and optionally update the cost to the latest purchase cost
-        c.execute('UPDATE Products_Services SET stock_qty = stock_qty + ?, cost = ? WHERE id = ?',
-                  (qty, cost, product_id))
-
-    # 3. Add to Expenses automatically
-    expense_desc = f"สั่งซื้อสินค้าเข้าสต๊อก (PO #{purchase_id}) - {supplier_name}"
-    c.execute('INSERT INTO Expenses (description, amount) VALUES (?, ?)', (expense_desc, total_amount))
-
+        # Calculate Weighted Average Cost (ถัวเฉลี่ย)
+        prod = c.execute('SELECT stock_qty, cost FROM Products_Services WHERE id = ?', (product_id,)).fetchone()
+        if prod:
+            old_qty = prod['stock_qty']
+            if old_qty < 0:
+                old_qty = 0  # Ignore negative stock in cost calculation
+            old_cost = prod['cost']
+            
+            new_qty = old_qty + qty
+            if new_qty > 0:
+                new_avg_cost = ((old_qty * old_cost) + (qty * cost)) / new_qty
+            else:
+                new_avg_cost = cost
+                
+            c.execute('UPDATE Products_Services SET stock_qty = ?, cost = ? WHERE id = ?',
+                      (new_qty, new_avg_cost, product_id))
+    
     conn.commit()
     conn.close()
     return jsonify({"message": "Purchase completed", "purchase_id": purchase_id}), 201
@@ -407,7 +504,7 @@ def add_purchase():
 @app.route('/api/jobs', methods=['GET'])
 def get_jobs():
     conn = get_db_connection()
-    jobs = conn.execute('SELECT * FROM Job_Orders ORDER BY timestamp DESC').fetchall()
+    jobs = conn.execute("SELECT * FROM Job_Orders WHERE status NOT IN ('ส่งมอบแล้ว', 'ยกเลิก') ORDER BY timestamp DESC").fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in jobs])
 
@@ -416,7 +513,7 @@ def add_job():
     data = request.get_json()
     customer_name = data.get('customer_name')
     details = data.get('details')
-    status = data.get('status', 'รอคิว')
+    status = data.get('status', 'รอสินค้า')
     
     conn = get_db_connection()
     c = conn.cursor()
@@ -437,6 +534,72 @@ def update_job_status(job_id):
     conn.close()
     return jsonify({"message": "Job status updated"})
 
+@app.route('/api/jobs/<int:job_id>/complete', methods=['POST'])
+def complete_job(job_id):
+    data = request.get_json()
+    total_amount = data.get('total_amount', 0)
+    discount = data.get('discount', 0)
+    payment_method = data.get('payment_method', 'Cash')
+    items = data.get('items', [])
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # Update job status
+    c.execute("UPDATE Job_Orders SET status = 'ส่งมอบแล้ว' WHERE id = ?", (job_id,))
+    
+    job = c.execute("SELECT * FROM Job_Orders WHERE id = ?", (job_id,)).fetchone()
+    
+    # Create Sale
+    c.execute('''
+        INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id) 
+        VALUES (?, ?, ?, ?, ?)
+    ''', (total_amount, discount, payment_method, 'Paid', None))
+    sale_id = c.lastrowid
+    
+    if items:
+        # If user scanned items, insert them and deduct stock
+        for item in items:
+            prod_id = item['id']
+            qty = item['qty']
+            price = item['price']
+            
+            c.execute('''
+                INSERT INTO Sale_Items (sale_id, product_id, qty, price)
+                VALUES (?, ?, ?, ?)
+            ''', (sale_id, prod_id, qty, price))
+            
+            c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, prod_id))
+    else:
+        # Fallback if no items scanned: use generic service
+        prod = c.execute("SELECT id FROM Products_Services WHERE name = 'งานบริการ (คิวงาน)'").fetchone()
+        if not prod:
+            c.execute('''
+                INSERT INTO Products_Services (name, type, price, cost) 
+                VALUES ('งานบริการ (คิวงาน)', 'Service', 0, 0)
+            ''')
+            prod_id = c.lastrowid
+        else:
+            prod_id = prod['id']
+            
+        c.execute('''
+            INSERT INTO Sale_Items (sale_id, product_id, qty, price)
+            VALUES (?, ?, 1, ?)
+        ''', (sale_id, prod_id, total_amount + discount))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Job completed and payment recorded", "sale_id": sale_id})
+
+@app.route('/api/jobs/<int:job_id>/cancel', methods=['POST'])
+def cancel_job(job_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE Job_Orders SET status = 'ยกเลิก' WHERE id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Job cancelled"})
+
 # --- Phase 3: Expenses ---
 @app.route('/api/expenses', methods=['GET'])
 def get_expenses():
@@ -445,14 +608,28 @@ def get_expenses():
     
     conn = get_db_connection()
     
-    query = "SELECT * FROM Expenses WHERE 1=1"
+    date_filter = ""
     params = []
     
     if start_date and end_date:
-        query += " AND timestamp >= ? AND timestamp <= ?"
+        date_filter = " AND timestamp >= ? AND timestamp <= ?"
+        # We need to provide the params twice, once for Expenses, once for Purchases
+        params.extend([f"{start_date} 00:00:00", f"{end_date} 23:59:59"])
         params.extend([f"{start_date} 00:00:00", f"{end_date} 23:59:59"])
         
-    query += " ORDER BY timestamp DESC"
+    query = f"""
+        SELECT id, timestamp, description, amount
+        FROM Expenses
+        WHERE 1=1 {date_filter}
+        
+        UNION ALL
+        
+        SELECT id, timestamp, 'ซื้อสินค้าเข้าสต๊อก (PO #' || id || ')' as description, total_amount as amount
+        FROM Purchases
+        WHERE 1=1 {date_filter}
+        
+        ORDER BY timestamp DESC
+    """
     
     expenses = conn.execute(query, params).fetchall()
     conn.close()
@@ -475,7 +652,12 @@ def add_expense():
 @app.route('/api/customers', methods=['GET'])
 def get_customers():
     conn = get_db_connection()
-    customers = conn.execute('SELECT * FROM Customers ORDER BY name').fetchall()
+    customers = conn.execute('''
+        SELECT c.*, 
+               COALESCE((SELECT SUM(total_amount - discount) FROM Sales WHERE customer_id = c.id AND payment_status = 'Unpaid'), 0) as unpaid_amount 
+        FROM Customers c 
+        ORDER BY c.name
+    ''').fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in customers])
 
@@ -488,9 +670,10 @@ def add_customer():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('INSERT INTO Customers (name, phone, points) VALUES (?, ?, 0)', (name, phone))
+    customer_id = c.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({"message": "Customer added"}), 201
+    return jsonify({"message": "Customer added", "id": customer_id}), 201
 
 @app.route('/api/customers/<int:customer_id>/points', methods=['PUT'])
 def update_points(customer_id):
@@ -511,10 +694,80 @@ def update_points(customer_id):
     conn.close()
     return jsonify({"message": f"Points {action}ed successfully"})
 
+@app.route('/api/customers/<int:customer_id>/unpaid_bills', methods=['GET'])
+def get_customer_unpaid_bills(customer_id):
+    conn = get_db_connection()
+    bills = conn.execute('''
+        SELECT id, timestamp, total_amount, discount 
+        FROM Sales 
+        WHERE customer_id = ? AND payment_status = 'Unpaid'
+        ORDER BY timestamp ASC
+    ''', (customer_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in bills])
+
+@app.route('/api/sales/<int:sale_id>/pay', methods=['PUT'])
+def pay_bill(sale_id):
+    import datetime
+    data = request.get_json()
+    method = data.get('payment_method')
+    conn = get_db_connection()
+    
+    # Get original bill details
+    orig = conn.execute('SELECT * FROM Sales WHERE id = ?', (sale_id,)).fetchone()
+    if not orig:
+        conn.close()
+        return jsonify({'error': 'Not found'}), 404
+        
+    orig_date = orig['timestamp'].split(' ')[0]
+    today_date = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+    
+    if orig_date == today_date:
+        # Same day payment: Just update the original bill to Paid and correct method
+        conn.execute('''
+            UPDATE Sales 
+            SET payment_status = 'Paid', payment_method = ?
+            WHERE id = ?
+        ''', (method, sale_id))
+        new_sale_id = sale_id
+    else:
+        # Cross-day payment: Update original bill to "Cleared"
+        conn.execute('''
+            UPDATE Sales 
+            SET payment_status = 'เคลียร์แล้ว' 
+            WHERE id = ?
+        ''', (sale_id,))
+        
+        # Create a new "Payment" bill for TODAY to record income
+        net_total = orig['total_amount'] - orig['discount']
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id)
+            VALUES (?, 0, ?, 'ชำระบิลค้างชำระ', ?)
+        ''', (net_total, method, orig['customer_id']))
+        new_sale_id = cursor.lastrowid
+        
+        # Copy items to the new bill so they show on the receipt
+        orig_items = conn.execute('SELECT product_id, qty, price FROM Sale_Items WHERE sale_id = ?', (sale_id,)).fetchall()
+        for item in orig_items:
+            cursor.execute('''
+                INSERT INTO Sale_Items (sale_id, product_id, qty, price)
+                VALUES (?, ?, ?, ?)
+            ''', (new_sale_id, item['product_id'], item['qty'], item['price']))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Paid'})
+
 @app.route('/receipt/<int:sale_id>')
 def receipt(sale_id):
     conn = get_db_connection()
-    sale = conn.execute('SELECT * FROM Sales WHERE id = ?', (sale_id,)).fetchone()
+    sale = conn.execute('''
+        SELECT s.*, c.name as customer_name 
+        FROM Sales s 
+        LEFT JOIN Customers c ON s.customer_id = c.id 
+        WHERE s.id = ?
+    ''', (sale_id,)).fetchone()
     if not sale:
         conn.close()
         return "Sale not found", 404
@@ -555,27 +808,39 @@ def get_reports():
     
     conn = get_db_connection()
     
-    # Base queries
-    sales_query = "SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status != 'ยกเลิกบิล'"
-    cash_query = "SELECT SUM(total_amount) as cash_total FROM Sales WHERE payment_status != 'ยกเลิกบิล' AND payment_method = 'Cash'"
-    transfer_query = "SELECT SUM(total_amount) as transfer_total FROM Sales WHERE payment_status != 'ยกเลิกบิล' AND payment_method = 'PromptPay'"
+    # Note: total_amount in Sales table is ALREADY the NET amount (after discount).
+    # To get Gross Revenue, we must add discount back.
+    sales_query = "SELECT SUM(total_amount + discount) as total_revenue FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
+    discount_query = "SELECT SUM(discount) as total_discount FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
+    cash_query = "SELECT SUM(total_amount) as cash_total FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'Unpaid', 'Pending') AND payment_method = 'Cash'"
+    transfer_query = "SELECT SUM(total_amount) as transfer_total FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'Unpaid', 'Pending') AND payment_method = 'PromptPay'"
+    unpaid_query = "SELECT SUM(total_amount) as unpaid_total FROM Sales WHERE payment_status = 'Unpaid'"
+    paid_unpaid_query = "SELECT SUM(total_amount) as paid_unpaid_total FROM Sales WHERE payment_status = 'ชำระบิลค้างชำระ'"
     expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE 1=1"
+    purchases_query = "SELECT SUM(total_amount) as total_purchases FROM Purchases WHERE 1=1"
+    cost_query = """
+        SELECT SUM(si.qty * p.cost) as total_cost 
+        FROM Sale_Items si 
+        JOIN Sales s ON si.sale_id = s.id 
+        JOIN Products_Services p ON si.product_id = p.id 
+        WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')
+    """
     recent_sales_query = "SELECT * FROM Sales WHERE 1=1"
     item_sales_query = """
         SELECT p.name, p.type, SUM(si.qty) as total_qty, SUM(si.qty * si.price) as total_amount
         FROM Sale_Items si
         JOIN Sales s ON si.sale_id = s.id
         JOIN Products_Services p ON si.product_id = p.id
-        WHERE s.payment_status != 'ยกเลิกบิล'
+        WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')
     """
     brewed_query = """
         SELECT SUM(si.qty * si.price) as brewed_total
         FROM Sale_Items si
         JOIN Sales s ON si.sale_id = s.id
         JOIN Products_Services p ON si.product_id = p.id
-        WHERE s.payment_status != 'ยกเลิกบิล' AND p.type = 'Brewed Drink'
+        WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ') AND p.type = 'Brewed Drink'
     """
-    free_drinks_query = "SELECT SUM(redeemed_points) as total_redeemed FROM Sales WHERE payment_status != 'ยกเลิกบิล'"
+    free_drinks_query = "SELECT SUM(redeemed_points) as total_redeemed FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
     
     params = []
     
@@ -587,15 +852,20 @@ def get_reports():
         
         date_filter = " AND timestamp >= ? AND timestamp <= ?"
         sales_query += date_filter
+        discount_query += date_filter
         cash_query += date_filter
         transfer_query += date_filter
+        unpaid_query += date_filter
+        paid_unpaid_query += date_filter
         expenses_query += date_filter
+        purchases_query += date_filter
         recent_sales_query += date_filter
         free_drinks_query += date_filter
         
         # for join query
         item_sales_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
         brewed_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
+        cost_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
         
         # params for each query
         params = [start, end]
@@ -604,11 +874,23 @@ def get_reports():
     sales_result = conn.execute(sales_query, params).fetchone()
     total_revenue = sales_result['total_revenue'] if sales_result['total_revenue'] else 0.0
     
+    discount_result = conn.execute(discount_query, params).fetchone()
+    total_discount = discount_result['total_discount'] if discount_result['total_discount'] else 0.0
+    
     cash_result = conn.execute(cash_query, params).fetchone()
     cash_total = cash_result['cash_total'] if cash_result['cash_total'] else 0.0
     
     transfer_result = conn.execute(transfer_query, params).fetchone()
     transfer_total = transfer_result['transfer_total'] if transfer_result['transfer_total'] else 0.0
+    
+    unpaid_result = conn.execute(unpaid_query, params).fetchone()
+    unpaid_total = unpaid_result['unpaid_total'] if unpaid_result['unpaid_total'] else 0.0
+    
+    paid_unpaid_result = conn.execute(paid_unpaid_query, params).fetchone()
+    paid_unpaid_total = paid_unpaid_result['paid_unpaid_total'] if paid_unpaid_result['paid_unpaid_total'] else 0.0
+    
+    cost_result = conn.execute(cost_query, params).fetchone()
+    total_cost = cost_result['total_cost'] if cost_result['total_cost'] else 0.0
     
     brewed_result = conn.execute(brewed_query, params).fetchone()
     brewed_total = brewed_result['brewed_total'] if brewed_result['brewed_total'] else 0.0
@@ -620,6 +902,9 @@ def get_reports():
     # Total Expenses
     expenses_result = conn.execute(expenses_query, params).fetchone()
     total_expenses = expenses_result['total_expenses'] if expenses_result['total_expenses'] else 0.0
+    
+    purchases_result = conn.execute(purchases_query, params).fetchone()
+    total_purchases = purchases_result['total_purchases'] if purchases_result['total_purchases'] else 0.0
     
     # Recent Sales List
     recent_sales_query += " ORDER BY timestamp DESC LIMIT 1000" # Increase limit if filtering by date
@@ -635,8 +920,13 @@ def get_reports():
     
     return jsonify({
         "total_revenue": total_revenue,
+        "total_discount": total_discount,
+        "total_cost": total_cost,
+        "total_purchases": total_purchases,
         "cash_total": cash_total,
         "transfer_total": transfer_total,
+        "unpaid_total": unpaid_total,
+        "paid_unpaid_total": paid_unpaid_total,
         "brewed_total": brewed_total,
         "total_free_drinks": total_free_drinks,
         "total_expenses": total_expenses,
