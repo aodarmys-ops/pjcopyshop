@@ -136,6 +136,17 @@
                     <a href="/reports" class="btn btn-dark w-100 rounded-pill">ดูรายงาน</a>
                 </div>
             </div>
+            
+            <!-- Backup & Sync -->
+            <div class="col-md-4">
+                <div class="glass-card feature-box text-center">
+                    <div class="icon">☁️</div>
+                    <h3 class="fw-bold">สำรองข้อมูล</h3>
+                    <p class="text-muted">ดาวน์โหลดข้อมูล CSV ลงเครื่อง หรืออัพโหลดขึ้น Google Drive</p>
+                    <a href="/api/backup/csv" target="_blank" class="btn btn-outline-primary w-100 rounded-pill fw-bold mb-2">📥 ดาวน์โหลด Backup (ZIP)</a>
+                    <button onclick="backupToGDrive()" class="btn btn-primary w-100 rounded-pill fw-bold" id="gdriveBtn">☁️ อัพโหลดขึ้น Google Drive</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -146,6 +157,26 @@
         <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
     </div>
     <script>
+        async function backupToGDrive() {
+            const btn = document.getElementById('gdriveBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ กำลังอัพโหลด...';
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/backup/gdrive', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message + "\n\nลิงก์: " + data.link);
+                    window.open(data.link, '_blank');
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
         // Font Size Logic
         const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
         let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;

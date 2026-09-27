@@ -126,9 +126,14 @@
                             <span class="fw-bold text-danger fs-5" id="valPurchasesOut">-0.00</span>
                         </div>
 
-                        <div class="d-flex justify-content-between mb-3">
-                            <span class="text-secondary fw-bold">หัก: จ่ายบิลต่างๆ (Expenses)</span>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: รายจ่ายร้าน (OPEX Expenses)</span>
                             <span class="fw-bold text-danger fs-5" id="valExpensesOut">-0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">หัก: ถอนใช้ส่วนตัว (Owner Draw)</span>
+                            <span class="fw-bold text-danger fs-5" id="valOwnerDrawOut">-0.00</span>
                         </div>
                         
                         <hr class="mt-auto mb-4">
@@ -142,19 +147,25 @@
             </div>
         </div>
         <div class="row g-3 mb-4">
-            <div class="col-md-4">
+            <div class="col-6 col-md-3">
                 <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #333 !important;">
                     <small class="text-muted fw-bold mb-2">รับเงินสด</small>
                     <h4 class="fw-bold m-0" id="valCash">0.00</h4>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-6 col-md-3">
                 <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #0dcaf0 !important;">
                     <small class="text-muted fw-bold mb-2">รับเงินโอน</small>
                     <h4 class="fw-bold m-0 text-info" id="valTransfer">0.00</h4>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #dc3545 !important;">
+                    <small class="text-muted fw-bold mb-2">ยอดค้างชำระ (บิลค้าง)</small>
+                    <h4 class="fw-bold m-0 text-danger" id="valUnpaid">0.00</h4>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
                 <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #0d6efd !important;">
                     <small class="text-muted fw-bold mb-2">รับชำระบิลค้าง</small>
                     <h4 class="fw-bold m-0 text-primary" id="valPaidUnpaid">0.00</h4>
@@ -284,19 +295,22 @@
             
             document.getElementById('valCash').innerText = fmt(data.cash_total);
             document.getElementById('valTransfer').innerText = fmt(data.transfer_total);
+            document.getElementById('valUnpaid').innerText = fmt(data.unpaid_total || 0);
             document.getElementById('valPaidUnpaid').innerText = fmt(data.paid_unpaid_total || 0);
             
             
             // Cash Flow Calculation
             const cashIn = parseFloat(data.cash_total) || 0;
-            const transferIn = (parseFloat(data.transfer_total) || 0) + (parseFloat(data.paid_unpaid_total) || 0);
+            const transferIn = parseFloat(data.transfer_total) || 0;
             const purchases = parseFloat(data.total_purchases) || 0;
-            const netCashFlow = cashIn + transferIn - purchases - expenses;
+            const ownerDraw = parseFloat(data.total_owner_draw) || 0;
+            const netCashFlow = cashIn + transferIn - purchases - expenses - ownerDraw;
 
             document.getElementById('valCashFlowIn').innerText = fmt(cashIn);
             document.getElementById('valTransferIn').innerText = fmt(transferIn);
             document.getElementById('valPurchasesOut').innerText = purchases > 0 ? "-" + fmt(purchases) : "0.00";
             document.getElementById('valExpensesOut').innerText = expenses > 0 ? "-" + fmt(expenses) : "0.00";
+            document.getElementById('valOwnerDrawOut').innerText = ownerDraw > 0 ? "-" + fmt(ownerDraw) : "0.00";
 
             const cashEl = document.getElementById('valNetCashFlow');
             cashEl.innerText = fmt(netCashFlow);
@@ -328,6 +342,7 @@
             brewedTfoot.innerHTML = '';
             
             let totalBrewedQty = 0;
+            let totalBrewedAmount = 0;
             let totalItemQty = 0;
             let totalItemAmount = 0;
             
@@ -355,6 +370,7 @@
                 if (brewedItems.length > 0) {
                     brewedItems.forEach(item => {
                         totalBrewedQty += parseInt(item.total_qty);
+                        totalBrewedAmount += parseFloat(item.total_amount);
                         let row = `<tr>
                             <td class="fw-bold text-dark">${item.name}</td>
                             <td class="text-center"><span class="badge bg-warning text-dark rounded-pill px-3">${item.total_qty}</span></td>
@@ -404,7 +420,7 @@
                     <tr class="fs-5">
                         <td class="text-end text-dark">รวมทั้งหมด:</td>
                         <td class="text-center fw-bold text-dark">${totalBrewedQty} แก้ว</td>
-                        <td></td>
+                        <td class="text-end fw-bold text-success">${fmt(totalBrewedAmount)}</td>
                     </tr>
                 `;
             }
@@ -441,18 +457,45 @@
 
                 pageData.forEach(s => {
                     const d = formatThaiDate(s.timestamp);
-                    let badgeColor = 'secondary';
-                    if(s.payment_status === 'ยกเลิกบิล') badgeColor = 'danger';
-                    else if(s.payment_method === 'Cash') badgeColor = 'success';
-                    else if(s.payment_method === 'PromptPay') badgeColor = 'info text-dark';
-                    else if(s.payment_method === 'Credit Card') badgeColor = 'warning text-dark';
-
                     const isVoided = s.payment_status === 'ยกเลิกบิล';
-                    const statusText = isVoided ? 'ยกเลิกบิล' : s.payment_method;
+                    let statusText = s.payment_method;
+                    let badgeColor = 'secondary';
+                    
+                    if (isVoided) {
+                        statusText = 'ยกเลิกบิล';
+                        badgeColor = 'danger';
+                    } else if (s.payment_status === 'Unpaid') {
+                        statusText = 'ค้างชำระ';
+                        badgeColor = 'danger';
+                    } else if (s.payment_status === 'ชำระบิลค้างชำระ') {
+                        statusText = 'รับชำระบิลค้าง';
+                        badgeColor = 'primary';
+                    } else {
+                        if (s.payment_method === 'Cash') {
+                            statusText = 'เงินสด';
+                            badgeColor = 'success';
+                        }
+                        else if (s.payment_method === 'PromptPay') {
+                            statusText = 'เงินโอน';
+                            badgeColor = 'info text-dark';
+                        }
+                        else if (s.payment_method === 'Split') {
+                            statusText = 'แยกชำระ';
+                            badgeColor = 'warning text-dark';
+                        }
+                        else if (s.payment_method === 'Credit Card') {
+                            statusText = 'บัตรเครดิต';
+                            badgeColor = 'warning text-dark';
+                        }
+                    }
+                    
                     const rowClass = isVoided ? 'text-decoration-line-through text-muted' : '';
 
                     let row = `<tr class="${rowClass}">
-                        <td><small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small></td>
+                        <td>
+                            <small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small>
+                            ${s.notes ? `<br><small class="text-info fw-bold" style="font-size:0.75rem;">${s.notes}</small>` : ''}
+                        </td>
                         <td>${d}</td>
                         <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
                         <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
@@ -507,12 +550,23 @@
         }
 
         function clearFilter() {
-            document.getElementById('startDate').value = '';
-            document.getElementById('endDate').value = '';
+            setToday();
             fetchReports();
         }
 
+        function setToday() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            const dateString = `${yyyy}-${mm}-${dd}`;
+            
+            document.getElementById('startDate').value = dateString;
+            document.getElementById('endDate').value = dateString;
+        }
+
         // Init
+        setToday();
         fetchReports();
     </script>
 

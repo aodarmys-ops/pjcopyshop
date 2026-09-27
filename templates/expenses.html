@@ -63,6 +63,20 @@
                             <label class="form-label text-muted small fw-bold">จำนวนเงิน (บาท)</label>
                             <input type="number" step="0.01" class="form-control" id="eAmount" required>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ประเภท</label>
+                            <select class="form-select" id="eType">
+                                <option value="OPEX">รายจ่ายร้าน (OPEX)</option>
+                                <option value="Owner Draw">ถอนใช้ส่วนตัว (ไม่หักกำไร)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ช่องทางชำระ</label>
+                            <select class="form-select" id="ePaymentMethod">
+                                <option value="Cash">เงินสด</option>
+                                <option value="Transfer">เงินโอน</option>
+                            </select>
+                        </div>
                         <button type="submit" class="btn btn-danger w-100 fw-bold rounded-pill shadow-sm">บันทึกข้อมูลรายจ่าย</button>
                     </form>
                 </div>
@@ -96,6 +110,8 @@
                                 <tr>
                                     <th>วันเวลา</th>
                                     <th>รายการ</th>
+                                    <th>ประเภท</th>
+                                    <th>ชำระโดย</th>
                                     <th class="text-end">จำนวนเงิน</th>
                                     <th class="text-center">จัดการ</th>
                                 </tr>
@@ -105,7 +121,7 @@
                             </tbody>
                             <tfoot class="table-light fw-bold text-danger">
                                 <tr>
-                                    <td colspan="2" class="text-end">ยอดรวมทั้งหมด:</td>
+                                    <td colspan="4" class="text-end">ยอดรวมทั้งหมด:</td>
                                     <td class="text-end" id="totalExpense">0.00</td>
                                     <td></td>
                                 </tr>
@@ -151,6 +167,8 @@
                 let row = `<tr>
                     <td><small class="text-muted">${d}</small></td>
                     <td class="fw-bold">${e.description}</td>
+                    <td><span class="badge bg-${e.expense_type === 'OPEX' ? 'warning text-dark' : 'danger'}">${e.expense_type || 'OPEX'}</span></td>
+                    <td><span class="badge bg-secondary">${e.payment_method || 'Cash'}</span></td>
                     <td class="text-end fw-bold text-danger">${formatMoney(e.amount)}</td>
                     <td class="text-center">${actionBtn}</td>
                 </tr>`;
@@ -164,7 +182,9 @@
             e.preventDefault();
             const payload = {
                 description: document.getElementById('eDesc').value,
-                amount: parseFloat(document.getElementById('eAmount').value)
+                amount: parseFloat(document.getElementById('eAmount').value),
+                expense_type: document.getElementById('eType').value,
+                payment_method: document.getElementById('ePaymentMethod').value
             };
             
             await fetch('/api/expenses', {

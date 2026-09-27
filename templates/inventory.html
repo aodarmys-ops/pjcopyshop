@@ -104,7 +104,7 @@
                         <div class="row">
                             <div class="col-6 mb-3">
                                 <label class="form-label text-muted small fw-bold">ต้นทุน</label>
-                                <input type="number" step="0.01" min="0.25" class="form-control" id="pCost" required>
+                                <input type="number" step="0.01" min="0" class="form-control" id="pCost">
                             </div>
                             <div class="col-6 mb-3">
                                 <label class="form-label text-muted small fw-bold">ราคาขาย</label>
@@ -247,7 +247,7 @@
                 model: document.getElementById('pModel').value,
                 color: document.getElementById('pColor').value,
                 barcode: document.getElementById('pBarcode').value,
-                cost: parseFloat(document.getElementById('pCost').value),
+                cost: parseFloat(document.getElementById('pCost').value) || 0,
                 price: parseFloat(document.getElementById('pPrice').value),
                 stock_qty: parseInt(document.getElementById('pStock').value),
                 reorder_level: parseInt(document.getElementById('pReorder').value)

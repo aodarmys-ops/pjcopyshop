@@ -16,6 +16,10 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    
+    <!-- TomSelect -->
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
     <style>
         .font-sizer {
             position: fixed;
@@ -58,7 +62,17 @@
                     <form id="addJobForm">
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">ชื่อลูกค้า</label>
-                            <input type="text" class="form-control" id="jCustomer" required>
+                            <select id="jCustomer" placeholder="เลือกลูกค้า หรือพิมพ์ชื่อเพื่อบันทึกใหม่..." autocomplete="off" required></select>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">จำนวน</label>
+                                <input type="number" class="form-control" id="jQty" value="1" min="1" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">มัดจำ (บาท)</label>
+                                <input type="number" class="form-control" id="jDeposit" value="0" min="0">
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">รายละเอียดงาน (เช่น ปริ้นสี 100 แผ่น เข้าเล่ม)</label>
@@ -107,16 +121,26 @@
                     
                     <div class="mb-3">
                         <label class="form-label fw-bold">ระบุสินค้าที่จะตัดสต๊อก (ทางเลือก)</label>
-                        <form id="searchProductForm" class="d-flex mb-2 position-relative">
-                            <input type="text" class="form-control" id="productSearchInput" placeholder="สแกนบาร์โค้ด หรือพิมพ์ชื่อ..." autocomplete="off">
-                            <button type="submit" class="btn btn-secondary ms-2 rounded-pill px-3">เพิ่ม</button>
-                            <!-- Autocomplete Dropdown -->
-                            <div id="productSuggestions" class="list-group position-absolute w-100 shadow-sm d-none" style="top: 100%; left: 0; z-index: 1050; max-height: 200px; overflow-y: auto;">
-                            </div>
-                        </form>
-                        <ul id="miniCartList" class="list-group mb-2" style="max-height: 150px; overflow-y: auto;">
-                            <!-- items -->
-                        </ul>
+                        <div class="mb-2 position-relative">
+                            <input type="text" id="barcodeInput" class="form-control" placeholder="สแกนบาร์โค้ด หรือ พิมพ์ชื่อสินค้า (แล้วกด Enter)" autocomplete="off">
+                            <ul id="posAutocomplete" class="list-group position-absolute w-100 shadow-sm" style="z-index:1000; display:none; max-height:200px; overflow-y:auto;"></ul>
+                        </div>
+                        <div class="cart-list flex-grow-1 overflow-auto mt-2 mb-2" style="max-height: 200px;">
+                            <table class="table align-middle table-hover">
+                                <thead>
+                                    <tr class="text-muted small border-bottom">
+                                        <th>รายการ</th>
+                                        <th class="text-center" style="width: 90px;">ราคา</th>
+                                        <th class="text-center" style="width: 80px;">จำนวน</th>
+                                        <th class="text-end">รวม</th>
+                                        <th style="width: 40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="miniCartList">
+                                    <!-- items -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     <hr>
                     <div class="mb-3">
@@ -127,12 +151,33 @@
                         <label class="form-label fw-bold">ส่วนลด (ถ้ามี)</label>
                         <input type="number" class="form-control" id="payDiscount" value="0" min="0">
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">วิธีชำระเงิน</label>
-                        <select class="form-select" id="payMethod">
-                            <option value="Cash">เงินสด (Cash)</option>
-                            <option value="PromptPay">เงินโอน / พร้อมเพย์</option>
-                        </select>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label text-muted small fw-bold">ช่องทางการชำระ</label>
+                            <select class="form-select fw-bold text-primary" id="payMethod" onchange="toggleSplitPayment()">
+                                <option value="Cash">💵 เงินสด</option>
+                                <option value="PromptPay">📱 สแกนจ่าย</option>
+                                <option value="Split">🔀 แยกชำระ (เงินสด+โอน)</option>
+                                <option value="None" class="d-none" id="optNone">❌ ยังไม่ชำระ</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label text-muted small fw-bold">สถานะ</label>
+                            <select class="form-select fw-bold text-success" id="paymentStatus" onchange="togglePaymentStatus()">
+                                <option value="Paid">✅ ชำระแล้ว</option>
+                                <option value="Unpaid">❌ ค้างชำระ (ลูกหนี้)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="splitPaymentDiv" class="row g-2 mb-3 d-none">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">ยอดเงินสด</label>
+                            <input type="number" step="0.01" class="form-control" id="splitCash" value="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">ยอดเงินโอน</label>
+                            <input type="number" step="0.01" class="form-control" id="splitTransfer" value="0">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -147,6 +192,137 @@
 
     <script>
         let paymentModal;
+        let customerSelectInstance = null;
+
+        function toggleSplitPayment() {
+            const method = document.getElementById('payMethod').value;
+            const splitDiv = document.getElementById('splitPaymentDiv');
+            if (method === 'Split') {
+                splitDiv.classList.remove('d-none');
+            } else {
+                splitDiv.classList.add('d-none');
+            }
+        }
+
+        function togglePaymentStatus() {
+            const status = document.getElementById('paymentStatus').value;
+            const methodSelect = document.getElementById('payMethod');
+            const optNone = document.getElementById('optNone');
+            
+            if (status === 'Unpaid') {
+                optNone.classList.remove('d-none');
+                methodSelect.value = 'None';
+                methodSelect.disabled = true;
+                document.getElementById('splitPaymentDiv').classList.add('d-none');
+            } else {
+                optNone.classList.add('d-none');
+                methodSelect.disabled = false;
+                if (methodSelect.value === 'None') methodSelect.value = 'Cash';
+                toggleSplitPayment();
+            }
+        }
+
+        const bInput = document.getElementById('barcodeInput');
+        const acList = document.getElementById('posAutocomplete');
+
+        bInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const query = e.target.value.trim();
+                if(!query) return;
+
+                const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+                const products = await res.json();
+                
+                if(products.length === 1 && products[0].barcode === query) {
+                    addProductToMiniCart(products[0]);
+                    bInput.value = '';
+                    acList.style.display = 'none';
+                } else if(products.length > 0) {
+                    addProductToMiniCart(products[0]);
+                    bInput.value = '';
+                    acList.style.display = 'none';
+                } else {
+                    alert("ไม่พบสินค้า");
+                }
+            }
+        });
+
+        bInput.addEventListener('input', async (e) => {
+            const q = e.target.value.trim();
+            if(!q) {
+                acList.style.display = 'none';
+                return;
+            }
+            const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}`);
+            const products = await res.json();
+            
+            acList.innerHTML = '';
+            if(products.length > 0) {
+                products.slice(0, 5).forEach(p => {
+                    let li = document.createElement('li');
+                    li.className = 'list-group-item list-group-item-action cursor-pointer';
+                    li.innerHTML = `<strong>${p.name}</strong> <small class="text-muted ms-1">[${p.barcode || 'ไม่มีบาร์โค้ด'}]</small> <span class="badge bg-primary float-end">฿${p.price}</span>`;
+                    li.onclick = () => {
+                        addProductToMiniCart(p);
+                        bInput.value = '';
+                        acList.style.display = 'none';
+                        bInput.focus();
+                    };
+                    acList.appendChild(li);
+                });
+                acList.style.display = 'block';
+            } else {
+                acList.style.display = 'none';
+            }
+        });
+
+        // Hide autocomplete when clicking outside
+        document.addEventListener('click', (e) => {
+            if (e.target !== bInput && !acList.contains(e.target)) {
+                acList.style.display = 'none';
+            }
+        });
+
+        async function loadCustomers() {
+            const res = await fetch('/api/customers?t=' + Date.now());
+            const customers = await res.json();
+            
+            const select = document.getElementById('jCustomer');
+            if (customerSelectInstance) {
+                customerSelectInstance.destroy();
+            }
+            select.innerHTML = '<option value="">เลือกลูกค้า หรือพิมพ์ชื่อใหม่...</option>';
+            
+            customers.forEach(c => {
+                let displayName = c.name;
+                if(c.phone) displayName += ` (${c.phone})`;
+                select.innerHTML += `<option value="${c.name}">${displayName}</option>`;
+            });
+
+            customerSelectInstance = new TomSelect(select, {
+                create: function(input, callback) {
+                    // Create new customer immediately
+                    fetch('/api/customers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: input, phone: '' })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        callback({ value: input, text: input });
+                    })
+                    .catch(() => {
+                        callback(false);
+                    });
+                },
+                sortField: {
+                    field: "text",
+                    direction: "asc"
+                },
+                placeholder: 'เลือกลูกค้า หรือพิมพ์ชื่อใหม่...'
+            });
+        }
 
         async function fetchJobs() {
             const res = await fetch('/api/jobs');
@@ -163,14 +339,17 @@
                 let row = `<tr>
                     <td><small class="text-muted fw-bold">#JOB-${String(j.id).padStart(4, '0')}</small></td>
                     <td class="fw-bold">${j.customer_name}</td>
-                    <td>${j.details}</td>
+                    <td>
+                        ${j.details}
+                        ${(j.qty || j.deposit) ? `<br><small class="text-muted">จำนวน: ${j.qty || 1} | มัดจำ: ${j.deposit || 0} บาท</small>` : ''}
+                    </td>
                     <td>
                         <span class="badge rounded-pill bg-primary p-2 shadow-sm">
                             📦 ${j.status}
                         </span>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3 mb-1" onclick="openPayment(${j.id})">💰 รับเงิน</button>
+                        <button class="btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3 mb-1" onclick="openPayment(${j.id}, ${j.deposit || 0})">💰 รับเงิน</button>
                         <button class="btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-bold px-3" onclick="cancelJob(${j.id})">❌ ยกเลิก</button>
                     </td>
                 </tr>`;
@@ -196,15 +375,25 @@
             miniCart.forEach((item, index) => {
                 total += (item.price * item.qty);
                 list.innerHTML += `
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <div style="flex:1;">
-                            <small class="fw-bold">${item.name}</small>
-                        </div>
-                        <div class="d-flex align-items-center">
-                            <input type="number" class="form-control form-control-sm text-center mx-2" style="width: 60px;" value="${item.qty}" min="1" onchange="updateMiniCartQty(${index}, this.value)">
-                            <button class="btn btn-sm btn-outline-danger border-0" onclick="removeMiniCartItem(${index})">🗑</button>
-                        </div>
-                    </li>
+                    <tr>
+                        <td>
+                            <div class="fw-bold">${item.name}</div>
+                        </td>
+                        <td style="width: 90px;">
+                            <div class="input-group input-group-sm">
+                                <input type="number" step="0.01" class="form-control text-center fw-bold" value="${item.price}" onchange="updateMiniCartPrice(${index}, this.value)">
+                            </div>
+                        </td>
+                        <td style="width: 80px;">
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateMiniCartQty(${index}, this.value)">
+                            </div>
+                        </td>
+                        <td class="text-end fw-bold text-dark">${(item.price * item.qty).toFixed(2)}</td>
+                        <td class="text-end" style="width: 40px;">
+                            <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="removeMiniCartItem(${index})">✖</button>
+                        </td>
+                    </tr>
                 `;
             });
             if(miniCart.length > 0) {
@@ -213,7 +402,20 @@
         }
 
         function updateMiniCartQty(index, qty) {
-            miniCart[index].qty = parseInt(qty) || 1;
+            const parsedQty = parseInt(qty) || 1;
+            const item = miniCart[index];
+            if (item.type !== 'Service' && parsedQty > item.stock_qty) {
+                alert(`จำนวนสินค้าเกินสต๊อกที่มี (มีอยู่ ${item.stock_qty})!`);
+                item.qty = item.stock_qty;
+                setTimeout(renderMiniCart, 10);
+            } else {
+                item.qty = parsedQty;
+                renderMiniCart();
+            }
+        }
+
+        function updateMiniCartPrice(index, price) {
+            miniCart[index].price = parseFloat(price) || 0;
             renderMiniCart();
         }
 
@@ -222,86 +424,33 @@
             renderMiniCart();
         }
 
-        document.getElementById('searchProductForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('productSearchInput');
-            const query = input.value.trim();
-            if (!query) return;
-
-            const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
-            const products = await res.json();
-            
-            if (products.length > 0) {
-                // If form is submitted (e.g. by pressing Enter via scanner), just take the first match
-                addProductToMiniCart(products[0]);
-                input.value = '';
-                document.getElementById('productSuggestions').classList.add('d-none');
-            } else {
-                alert('ไม่พบสินค้า!');
-            }
-        });
-
+        // product search logic is now handled by TomSelect in loadProducts()
         function addProductToMiniCart(p) {
+            if (p.type !== 'Service' && p.stock_qty <= 0) {
+                alert("สินค้าหมดสต๊อก ไม่สามารถขายได้!");
+                return;
+            }
             const existing = miniCart.find(i => i.id === p.id);
             if (existing) {
+                if (p.type !== 'Service' && (existing.qty + 1) > p.stock_qty) {
+                    alert(`จำนวนสินค้าเกินสต๊อกที่มี (มีอยู่ ${p.stock_qty})!`);
+                    return;
+                }
                 existing.qty += 1;
             } else {
-                miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1 });
+                miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1, type: p.type, stock_qty: p.stock_qty });
             }
             renderMiniCart();
         }
 
-        // Autocomplete functionality
-        let searchTimeout = null;
-        document.getElementById('productSearchInput').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            const query = e.target.value.trim();
-            const suggestionsBox = document.getElementById('productSuggestions');
-            
-            if (!query) {
-                suggestionsBox.classList.add('d-none');
-                return;
-            }
-
-            searchTimeout = setTimeout(async () => {
-                const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
-                const products = await res.json();
-                
-                suggestionsBox.innerHTML = '';
-                if (products.length > 0) {
-                    products.forEach(p => {
-                        const item = document.createElement('button');
-                        item.type = 'button';
-                        item.className = 'list-group-item list-group-item-action text-start';
-                        item.innerHTML = `<strong>${p.name}</strong> <small class="text-muted ms-1">[${p.barcode || 'ไม่มีบาร์โค้ด'}]</small> <span class="float-end text-success">${formatMoney(p.price)}</span>`;
-                        item.onclick = () => {
-                            addProductToMiniCart(p);
-                            document.getElementById('productSearchInput').value = '';
-                            suggestionsBox.classList.add('d-none');
-                            document.getElementById('productSearchInput').focus();
-                        };
-                        suggestionsBox.appendChild(item);
-                    });
-                    suggestionsBox.classList.remove('d-none');
-                } else {
-                    suggestionsBox.innerHTML = '<div class="list-group-item text-muted text-center">ไม่พบสินค้า</div>';
-                    suggestionsBox.classList.remove('d-none');
-                }
-            }, 300); // 300ms debounce
-        });
-        
-        // Hide autocomplete when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('#searchProductForm')) {
-                document.getElementById('productSuggestions').classList.add('d-none');
-            }
-        });
-
-        function openPayment(id) {
+        function openPayment(id, deposit = 0) {
             document.getElementById('payJobId').value = id;
             document.getElementById('payAmount').value = '';
-            document.getElementById('payDiscount').value = '0';
+            document.getElementById('payDiscount').value = deposit;
             document.getElementById('payMethod').value = 'Cash';
+            document.getElementById('paymentStatus').value = 'Paid';
+            togglePaymentStatus();
+            
             miniCart = [];
             renderMiniCart();
             
@@ -312,7 +461,7 @@
             
             // Focus search input after modal is shown
             document.getElementById('paymentModal').addEventListener('shown.bs.modal', function () {
-                document.getElementById('productSearchInput').focus();
+                document.getElementById('barcodeInput').focus();
             }, { once: true });
         }
 
@@ -333,7 +482,10 @@
                 body: JSON.stringify({
                     total_amount: amount,
                     discount: discount,
-                    payment_method: method,
+                    payment_method: document.getElementById('payMethod').value,
+                    payment_status: document.getElementById('paymentStatus').value,
+                    split_cash: parseFloat(document.getElementById('splitCash').value) || 0,
+                    split_transfer: parseFloat(document.getElementById('splitTransfer').value) || 0,
                     items: miniCart
                 })
             });
@@ -348,9 +500,17 @@
 
         document.getElementById('addJobForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const customerName = document.getElementById('jCustomer').value;
+            if (!customerName) {
+                alert("กรุณาระบุชื่อลูกค้า");
+                return;
+            }
+            
             const payload = {
-                customer_name: document.getElementById('jCustomer').value,
-                details: document.getElementById('jDetails').value
+                customer_name: customerName,
+                details: document.getElementById('jDetails').value,
+                qty: parseInt(document.getElementById('jQty').value) || 1,
+                deposit: parseFloat(document.getElementById('jDeposit').value) || 0
             };
             
             await fetch('/api/jobs', {
@@ -360,10 +520,12 @@
             });
             
             e.target.reset();
+            if (customerSelectInstance) customerSelectInstance.setValue('');
             fetchJobs();
         });
 
         // Init
+        loadCustomers();
         fetchJobs();
     </script>
 

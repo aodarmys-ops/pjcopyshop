@@ -1,8 +1,9 @@
 # pyrefly: ignore [missing-import]
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 import sqlite3
 
 app = Flask(__name__)
+app.secret_key = 'pjcopyshop_secret_1234' # Required for session
 DB_FILE = 'xerox.db'
 
 def get_db_connection():
@@ -18,9 +19,15 @@ def init_db():
         CREATE TABLE IF NOT EXISTS Users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
-            role TEXT NOT NULL
+            role TEXT NOT NULL,
+            pin TEXT
         )
     ''')
+    # Insert default admin user if no users exist
+    c.execute('SELECT COUNT(*) FROM Users')
+    if c.fetchone()[0] == 0:
+        c.execute("INSERT INTO Users (username, role, pin) VALUES ('Admin', 'Admin', '1234')")
+
     # Products & Services
     c.execute('''
         CREATE TABLE IF NOT EXISTS Products_Services (
@@ -53,13 +60,17 @@ def init_db():
     c.execute('''
         CREATE TABLE IF NOT EXISTS Sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_no TEXT,
             total_amount REAL NOT NULL,
             discount REAL DEFAULT 0,
             payment_method TEXT NOT NULL,
+            split_cash REAL DEFAULT 0,
+            split_transfer REAL DEFAULT 0,
             payment_status TEXT DEFAULT 'Paid',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             customer_id INTEGER,
-            redeemed_points INTEGER DEFAULT 0
+            redeemed_points INTEGER DEFAULT 0,
+            notes TEXT
         )
     ''')
     c.execute('''
@@ -101,6 +112,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             customer_name TEXT,
             details TEXT,
+            qty INTEGER DEFAULT 1,
+            deposit REAL DEFAULT 0,
             status TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -111,6 +124,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
+            expense_type TEXT DEFAULT 'OPEX',
+            payment_method TEXT DEFAULT 'Cash',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -132,23 +147,104 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             phone TEXT,
-            points INTEGER DEFAULT 0
+            points INTEGER DEFAULT 0,
+            allow_points_with_debt INTEGER DEFAULT 0
+        )
+    ''')
+    
+    # Customer Credit (ลูกหนี้)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Customer_Credit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER,
+            sale_id INTEGER,
+            amount_due REAL NOT NULL,
+            amount_paid REAL DEFAULT 0,
+            status TEXT DEFAULT 'Unpaid',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(customer_id) REFERENCES Customers(id),
+            FOREIGN KEY(sale_id) REFERENCES Sales(id)
+        )
+    ''')
+
+    # BOM (สูตรตัดสต็อก)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS BOM (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            raw_material_id INTEGER,
+            qty_required REAL NOT NULL,
+            FOREIGN KEY(product_id) REFERENCES Products_Services(id),
+            FOREIGN KEY(raw_material_id) REFERENCES Products_Services(id)
+        )
+    ''')
+
+    # Promotions
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Promotions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            promo_type TEXT NOT NULL,
+            discount_value REAL NOT NULL,
+            condition_type TEXT,
+            condition_value REAL,
+            is_active INTEGER DEFAULT 1
+        )
+    ''')
+
+    # Business Date (วันเปิดร้าน)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Business_Date (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            current_date TEXT NOT NULL,
+            is_closed INTEGER DEFAULT 0,
+            starting_cash REAL DEFAULT 0,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
     conn.close()
 
+@app.before_request
+def require_login():
+    allowed_routes = ['login', 'static']
+    if request.endpoint not in allowed_routes and 'user_id' not in session:
+        return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        pin = request.form.get('pin')
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM Users WHERE pin = ?', (pin,)).fetchone()
+        conn.close()
+        if user:
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['role'] = user['role']
+            return redirect(url_for('index'))
+        else:
+            return render_template('login.html', error='รหัส PIN ไม่ถูกต้อง')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/print-barcodes')
+def print_barcodes():
+    return render_template('print_barcodes.html')
 
 @app.route('/inventory')
 def inventory():
     return render_template('inventory.html')
 
-@app.route('/print-barcodes')
-def print_barcodes():
-    return render_template('print_barcodes.html')
+
 
 @app.route('/purchases')
 def purchases():
@@ -307,6 +403,14 @@ def writeoff_stock():
     c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, product_id))
     c.execute('INSERT INTO Stock_WriteOffs (product_id, qty, reason) VALUES (?, ?, ?)', (product_id, qty, reason))
     
+    # Record expense (OPEX)
+    prod = c.execute('SELECT name, cost FROM Products_Services WHERE id = ?', (product_id,)).fetchone()
+    if prod:
+        total_cost = prod['cost'] * qty
+        desc = f"ตัดของเสีย: {prod['name']} จำนวน {qty} ({reason})"
+        c.execute('INSERT INTO Expenses (description, amount, expense_type, payment_method) VALUES (?, ?, ?, ?)',
+                  (desc, total_cost, 'OPEX', 'None'))
+    
     conn.commit()
     conn.close()
     return jsonify({"message": "Stock written off successfully"})
@@ -338,23 +442,71 @@ def get_writeoff_history():
 @app.route('/api/sales', methods=['POST'])
 def checkout_sale():
     data = request.get_json()
-    total_amount = data.get('total_amount', 0)
-    discount = data.get('discount', 0)
+    manual_discount = max(0, float(data.get('discount', 0)))
     payment_method = data.get('payment_method', 'Cash')
     payment_status = data.get('payment_status', 'Paid')
+    split_cash = data.get('split_cash', 0.0)
+    split_transfer = data.get('split_transfer', 0.0)
+    notes = data.get('notes', '')
     customer_id = data.get('customer_id')
-    redeemed_points = data.get('redeemed_points', 0)
+    redeemed_points = int(data.get('redeemed_points', 0))
     items = data.get('items', [])
 
     conn = get_db_connection()
     c = conn.cursor()
     
+    # Calculate Total Amount and apply Round Up (ปัดเศษขึ้นเสมอ)
+    import math
+    subtotal = sum(item['price'] * item['qty'] for item in items)
+    
+    # 0. Check Stock
+    for item in items:
+        if item.get('type') != 'Service':
+            p = c.execute('SELECT stock_qty FROM Products_Services WHERE id = ?', (item['id'],)).fetchone()
+            if p and p['stock_qty'] < item['qty']:
+                conn.close()
+                return jsonify({"message": f"สินค้า {item.get('name', 'Product')} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
+
+    loyalty_discount = 0
+
+    if redeemed_points:
+        if redeemed_points % 10 != 0 or not customer_id:
+            conn.close()
+            return jsonify({"message": "Invalid loyalty redemption"}), 400
+
+        customer = c.execute('SELECT points FROM Customers WHERE id = ?', (customer_id,)).fetchone()
+        if not customer or customer['points'] < redeemed_points:
+            conn.close()
+            return jsonify({"message": "Not enough points"}), 400
+            
+        # Frontend already applies discount to item prices, so loyalty_discount is 0 here
+
+    discount = manual_discount + loyalty_discount
+    total_amount = math.ceil(max(0, subtotal - discount))
+    
+    # Generate Invoice No (INVYYMM-XXXX)
+    import datetime
+    now = datetime.datetime.now()
+    yy = str(now.year + 543)[2:]
+    mm = f"{now.month:02d}"
+    prefix = f"INV{yy}{mm}-"
+    last_inv = c.execute("SELECT invoice_no FROM Sales WHERE invoice_no LIKE ? ORDER BY invoice_no DESC LIMIT 1", (prefix + '%',)).fetchone()
+    seq = int(last_inv['invoice_no'].split('-')[1]) + 1 if last_inv else 1
+    invoice_no = f"{prefix}{seq:04d}"
+    
     # 1. Insert into Sales
     c.execute('''
-        INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id, redeemed_points) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (total_amount, discount, payment_method, payment_status, customer_id, redeemed_points))
+        INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes))
     sale_id = c.lastrowid
+    
+    # Insert into Customer_Credit if Unpaid (or Hold, though scope says Unpaid means Credit)
+    if payment_status == 'Unpaid' and customer_id:
+        c.execute('''
+            INSERT INTO Customer_Credit (customer_id, sale_id, amount_due, amount_paid, status)
+            VALUES (?, ?, ?, 0, 'Unpaid')
+        ''', (customer_id, sale_id, total_amount))
 
     # 2. Insert into Sale_Items, update stock, and calculate points
     earned_points = 0
@@ -364,28 +516,72 @@ def checkout_sale():
         price = item['price']
         item_type = item.get('type', '')
         
-        if item_type == 'Brewed Drink':
-            earned_points += qty
-        
         c.execute('INSERT INTO Sale_Items (sale_id, product_id, qty, price) VALUES (?, ?, ?, ?)',
                   (sale_id, product_id, qty, price))
-        
-        # Deduct stock if it is a retail product (Brewed drinks might not use stock, but if they do, we'll keep the logic. Let's assume Retail only for now)
-        c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND type = "Retail"',
-                  (qty, product_id))
+                  
+        if payment_status != 'Hold':
+            if item_type == 'Brewed Drink' and not item.get('is_redeemed'):
+                earned_points += qty
+            
+            # Check BOM for Raw Materials deduction
+            bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?', (product_id,)).fetchall()
+            if bom_items:
+                for b in bom_items:
+                    raw_qty = b['qty_required'] * qty
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (raw_qty, b['raw_material_id']))
+            else:
+                # Normal stock deduction if no BOM and it is Retail
+                if item_type != 'Service':
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, product_id))
 
-    # Adjust earned points if customer redeemed points for free drinks (10 points = 1 free drink)
-    if redeemed_points >= 10:
-        free_drinks = redeemed_points // 10
-        earned_points = max(0, earned_points - free_drinks)
-
-    # 3. Add/subtract points to customer if applicable
-    if customer_id and (earned_points > 0 or redeemed_points > 0):
-        c.execute('UPDATE Customers SET points = points + ? - ? WHERE id = ?', (earned_points, redeemed_points, customer_id))
+    if payment_status != 'Hold':
+        # 3. Add/subtract points to customer if applicable
+        if customer_id and (earned_points > 0 or redeemed_points > 0):
+            c.execute('UPDATE Customers SET points = points + ? - ? WHERE id = ?', (earned_points, redeemed_points, customer_id))
+            if redeemed_points > 0:
+                c.execute('UPDATE Customers SET allow_points_with_debt = 0 WHERE id = ?', (customer_id,))
 
     conn.commit()
     conn.close()
-    return jsonify({"message": "Sale completed successfully", "sale_id": sale_id}), 201
+    return jsonify({"message": "Sale completed successfully", "sale_id": sale_id,
+                    "loyalty_discount": loyalty_discount}), 201
+
+
+@app.route('/api/sales/held', methods=['GET'])
+def get_held_sales():
+    conn = get_db_connection()
+    c = conn.cursor()
+    sales = c.execute("SELECT * FROM Sales WHERE payment_status = 'Hold' ORDER BY timestamp DESC").fetchall()
+    held_list = []
+    for s in sales:
+        s_dict = dict(s)
+        items = c.execute('''
+            SELECT si.*, p.name, p.barcode, p.type 
+            FROM Sale_Items si 
+            JOIN Products_Services p ON si.product_id = p.id 
+            WHERE si.sale_id = ?
+        ''', (s['id'],)).fetchall()
+        s_dict['items'] = [dict(i) for i in items]
+        held_list.append(s_dict)
+    conn.close()
+    return jsonify(held_list)
+
+@app.route('/api/sales/held/<int:sale_id>', methods=['DELETE'])
+def pull_held_sale(sale_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    sale = c.execute("SELECT payment_status FROM Sales WHERE id = ?", (sale_id,)).fetchone()
+    if not sale or sale['payment_status'] != 'Hold':
+        conn.close()
+        return jsonify({"message": "Invalid held sale"}), 400
+        
+    c.execute("DELETE FROM Sale_Items WHERE sale_id = ?", (sale_id,))
+    c.execute("DELETE FROM Sales WHERE id = ?", (sale_id,))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Held sale deleted successfully"})
 
 @app.route('/api/sales/<int:sale_id>/void', methods=['POST'])
 def void_sale(sale_id):
@@ -451,6 +647,7 @@ def add_purchase():
     data = request.get_json()
     supplier_name = data.get('supplier_name', 'ไม่ระบุ')
     has_vat = data.get('has_vat', False)
+    payment_method = data.get('payment_method', 'Cash')
     items = data.get('items', [])
 
     if not items:
@@ -465,9 +662,9 @@ def add_purchase():
     
     # 1. Insert Purchase
     c.execute('''
-        INSERT INTO Purchases (supplier_name, subtotal, vat_amount, total_amount) 
-        VALUES (?, ?, ?, ?)
-    ''', (supplier_name, subtotal, vat_amount, total_amount))
+        INSERT INTO Purchases (supplier_name, subtotal, vat_amount, total_amount, payment_method) 
+        VALUES (?, ?, ?, ?, ?)
+    ''', (supplier_name, subtotal, vat_amount, total_amount, payment_method))
     purchase_id = c.lastrowid
 
     # 2. Insert Items & Update Stock & Cost
@@ -513,11 +710,13 @@ def add_job():
     data = request.get_json()
     customer_name = data.get('customer_name')
     details = data.get('details')
+    qty = data.get('qty', 1)
+    deposit = data.get('deposit', 0)
     status = data.get('status', 'รอสินค้า')
     
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('INSERT INTO Job_Orders (customer_name, details, status) VALUES (?, ?, ?)', (customer_name, details, status))
+    c.execute('INSERT INTO Job_Orders (customer_name, details, qty, deposit, status) VALUES (?, ?, ?, ?, ?)', (customer_name, details, qty, deposit, status))
     conn.commit()
     conn.close()
     return jsonify({"message": "Job created"}), 201
@@ -540,22 +739,56 @@ def complete_job(job_id):
     total_amount = data.get('total_amount', 0)
     discount = data.get('discount', 0)
     payment_method = data.get('payment_method', 'Cash')
+    payment_status = data.get('payment_status', 'Paid')
+    split_cash = data.get('split_cash', 0)
+    split_transfer = data.get('split_transfer', 0)
     items = data.get('items', [])
     
     conn = get_db_connection()
     c = conn.cursor()
     
+    # Check Stock for scanned items
+    if items:
+        for item in items:
+            if item.get('type') != 'Service':
+                p = c.execute('SELECT stock_qty, name FROM Products_Services WHERE id = ?', (item['id'],)).fetchone()
+                if p and p['stock_qty'] < item['qty']:
+                    conn.close()
+                    return jsonify({"message": f"สินค้า {p['name']} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
+
     # Update job status
     c.execute("UPDATE Job_Orders SET status = 'ส่งมอบแล้ว' WHERE id = ?", (job_id,))
     
     job = c.execute("SELECT * FROM Job_Orders WHERE id = ?", (job_id,)).fetchone()
     
+    # Resolve customer_id from name
+    cust = c.execute("SELECT id FROM Customers WHERE name = ?", (job['customer_name'],)).fetchone()
+    customer_id = cust['id'] if cust else None
+    
+    # Generate Invoice No
+    import datetime
+    now = datetime.datetime.now()
+    yy = str(now.year + 543)[2:]
+    mm = f"{now.month:02d}"
+    prefix = f"INV{yy}{mm}-"
+    last_inv = c.execute("SELECT invoice_no FROM Sales WHERE invoice_no LIKE ? ORDER BY invoice_no DESC LIMIT 1", (prefix + '%',)).fetchone()
+    seq = int(last_inv['invoice_no'].split('-')[1]) + 1 if last_inv else 1
+    invoice_no = f"{prefix}{seq:04d}"
+    
+    notes = f"จากบิลจองงาน #JOB-{job_id:04d}"
+    
     # Create Sale
     c.execute('''
-        INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id) 
-        VALUES (?, ?, ?, ?, ?)
-    ''', (total_amount, discount, payment_method, 'Paid', None))
+        INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, notes) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, notes))
     sale_id = c.lastrowid
+    
+    if payment_status == 'Unpaid' and customer_id:
+        c.execute('''
+            INSERT INTO Customer_Credit (customer_id, sale_id, amount_due, amount_paid, status)
+            VALUES (?, ?, ?, 0, 'Unpaid')
+        ''', (customer_id, sale_id, total_amount))
     
     if items:
         # If user scanned items, insert them and deduct stock
@@ -618,13 +851,13 @@ def get_expenses():
         params.extend([f"{start_date} 00:00:00", f"{end_date} 23:59:59"])
         
     query = f"""
-        SELECT id, timestamp, description, amount
+        SELECT id, timestamp, description, amount, expense_type, payment_method
         FROM Expenses
         WHERE 1=1 {date_filter}
         
         UNION ALL
         
-        SELECT id, timestamp, 'ซื้อสินค้าเข้าสต๊อก (PO #' || id || ')' as description, total_amount as amount
+        SELECT id, timestamp, 'ซื้อสินค้าเข้าสต๊อก (PO #' || id || ')' as description, total_amount as amount, 'OPEX' as expense_type, 'N/A' as payment_method
         FROM Purchases
         WHERE 1=1 {date_filter}
         
@@ -640,10 +873,12 @@ def add_expense():
     data = request.get_json()
     description = data.get('description')
     amount = data.get('amount')
+    expense_type = data.get('expense_type', 'OPEX')
+    payment_method = data.get('payment_method', 'Cash')
     
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('INSERT INTO Expenses (description, amount) VALUES (?, ?)', (description, amount))
+    c.execute('INSERT INTO Expenses (description, amount, expense_type, payment_method) VALUES (?, ?, ?, ?)', (description, amount, expense_type, payment_method))
     conn.commit()
     conn.close()
     return jsonify({"message": "Expense recorded"}), 201
@@ -676,6 +911,18 @@ def add_customer():
     return jsonify({"message": "Customer added", "id": customer_id}), 201
 
 @app.route('/api/customers/<int:customer_id>/points', methods=['PUT'])
+
+@app.route('/api/customers/<int:customer_id>/allow_points', methods=['PUT'])
+def toggle_allow_points(customer_id):
+    data = request.get_json()
+    allow = data.get('allow', 0)
+    conn = get_db_connection()
+    conn.execute("UPDATE Customers SET allow_points_with_debt = ? WHERE id = ?", (allow, customer_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Settings updated"})
+
+@app.route('/api/customers/<int:customer_id>/points', methods=['PUT'])
 def update_points(customer_id):
     data = request.get_json()
     action = data.get('action') # 'add' or 'redeem'
@@ -698,10 +945,11 @@ def update_points(customer_id):
 def get_customer_unpaid_bills(customer_id):
     conn = get_db_connection()
     bills = conn.execute('''
-        SELECT id, timestamp, total_amount, discount 
-        FROM Sales 
-        WHERE customer_id = ? AND payment_status = 'Unpaid'
-        ORDER BY timestamp ASC
+        SELECT s.id, s.timestamp, cc.amount_due - cc.amount_paid as remaining_amount, cc.amount_paid
+        FROM Sales s
+        JOIN Customer_Credit cc ON s.id = cc.sale_id
+        WHERE s.customer_id = ? AND cc.status = 'Unpaid'
+        ORDER BY s.timestamp ASC
     ''', (customer_id,)).fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in bills])
@@ -709,8 +957,13 @@ def get_customer_unpaid_bills(customer_id):
 @app.route('/api/sales/<int:sale_id>/pay', methods=['PUT'])
 def pay_bill(sale_id):
     import datetime
-    data = request.get_json()
-    method = data.get('payment_method')
+    data = request.get_json() or {}
+    method = data.get('payment_method', 'Cash')
+    split_cash = float(data.get('split_cash', 0.0))
+    split_transfer = float(data.get('split_transfer', 0.0))
+    
+    if method not in ('Cash', 'PromptPay', 'Split'):
+        return jsonify({'error': 'Invalid payment method'}), 400
     conn = get_db_connection()
     
     # Get original bill details
@@ -722,29 +975,44 @@ def pay_bill(sale_id):
     orig_date = orig['timestamp'].split(' ')[0]
     today_date = datetime.datetime.utcnow().strftime('%Y-%m-%d')
     
-    if orig_date == today_date:
-        # Same day payment: Just update the original bill to Paid and correct method
-        conn.execute('''
-            UPDATE Sales 
-            SET payment_status = 'Paid', payment_method = ?
-            WHERE id = ?
-        ''', (method, sale_id))
-        new_sale_id = sale_id
-    else:
-        # Cross-day payment: Update original bill to "Cleared"
-        conn.execute('''
-            UPDATE Sales 
-            SET payment_status = 'เคลียร์แล้ว' 
-            WHERE id = ?
-        ''', (sale_id,))
+    credit = conn.execute('SELECT * FROM Customer_Credit WHERE sale_id = ?', (sale_id,)).fetchone()
+    if not credit:
+        conn.close()
+        return jsonify({'error': 'No credit record found'}), 404
         
+    remaining = credit['amount_due'] - credit['amount_paid']
+    
+    pay_amount = float(data.get('pay_amount', remaining))
+    if pay_amount > remaining:
+        pay_amount = remaining
+        
+    new_paid = credit['amount_paid'] + pay_amount
+    is_fully_paid = new_paid >= credit['amount_due']
+    
+    cursor = conn.cursor()
+    
+    if is_fully_paid:
+        cursor.execute("UPDATE Customer_Credit SET amount_paid = amount_due, status = 'Paid' WHERE sale_id = ?", (sale_id,))
+        if orig_date == today_date and pay_amount == remaining and credit['amount_paid'] == 0:
+            # Same day full payment in one go: Just update original bill
+            cursor.execute('''
+                UPDATE Sales 
+                SET payment_status = 'Paid', payment_method = ?, split_cash = ?, split_transfer = ?
+                WHERE id = ?
+            ''', (method, split_cash, split_transfer, sale_id))
+            new_sale_id = sale_id
+        else:
+            # Cross-day or it was partially paid before
+            cursor.execute("UPDATE Sales SET payment_status = 'เคลียร์แล้ว' WHERE id = ?", (sale_id,))
+    else:
+        cursor.execute("UPDATE Customer_Credit SET amount_paid = ? WHERE sale_id = ?", (new_paid, sale_id))
+        
+    if not (is_fully_paid and orig_date == today_date and pay_amount == remaining and credit['amount_paid'] == 0):
         # Create a new "Payment" bill for TODAY to record income
-        net_total = orig['total_amount'] - orig['discount']
-        cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO Sales (total_amount, discount, payment_method, payment_status, customer_id)
-            VALUES (?, 0, ?, 'ชำระบิลค้างชำระ', ?)
-        ''', (net_total, method, orig['customer_id']))
+            INSERT INTO Sales (total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id)
+            VALUES (?, 0, ?, ?, ?, 'ชำระบิลค้างชำระ', ?)
+        ''', (pay_amount, method, split_cash, split_transfer, orig['customer_id']))
         new_sale_id = cursor.lastrowid
         
         # Copy items to the new bill so they show on the receipt
@@ -809,14 +1077,15 @@ def get_reports():
     conn = get_db_connection()
     
     # Note: total_amount in Sales table is ALREADY the NET amount (after discount).
-    # To get Gross Revenue, we must add discount back.
-    sales_query = "SELECT SUM(total_amount + discount) as total_revenue FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
+    # Since there is no discount deduction line in P&L, we use total_amount as Net Sales.
+    sales_query = "SELECT SUM(total_amount) as total_revenue FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
     discount_query = "SELECT SUM(discount) as total_discount FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
-    cash_query = "SELECT SUM(total_amount) as cash_total FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'Unpaid', 'Pending') AND payment_method = 'Cash'"
-    transfer_query = "SELECT SUM(total_amount) as transfer_total FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'Unpaid', 'Pending') AND payment_method = 'PromptPay'"
+    cash_query = "SELECT SUM(CASE WHEN payment_method = 'Cash' THEN total_amount WHEN payment_method = 'Split' THEN split_cash ELSE 0 END) as cash_total FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'Unpaid', 'Pending', 'Hold')"
+    transfer_query = "SELECT SUM(CASE WHEN payment_method IN ('PromptPay', 'Credit Card') THEN total_amount WHEN payment_method = 'Split' THEN split_transfer ELSE 0 END) as transfer_total FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'Unpaid', 'Pending', 'Hold')"
     unpaid_query = "SELECT SUM(total_amount) as unpaid_total FROM Sales WHERE payment_status = 'Unpaid'"
     paid_unpaid_query = "SELECT SUM(total_amount) as paid_unpaid_total FROM Sales WHERE payment_status = 'ชำระบิลค้างชำระ'"
-    expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE 1=1"
+    expenses_query = "SELECT SUM(amount) as total_expenses FROM Expenses WHERE expense_type = 'OPEX'"
+    owner_draw_query = "SELECT SUM(amount) as total_owner_draw FROM Expenses WHERE expense_type = 'Owner Draw'"
     purchases_query = "SELECT SUM(total_amount) as total_purchases FROM Purchases WHERE 1=1"
     cost_query = """
         SELECT SUM(si.qty * p.cost) as total_cost 
@@ -858,6 +1127,7 @@ def get_reports():
         unpaid_query += date_filter
         paid_unpaid_query += date_filter
         expenses_query += date_filter
+        owner_draw_query += date_filter
         purchases_query += date_filter
         recent_sales_query += date_filter
         free_drinks_query += date_filter
@@ -903,6 +1173,9 @@ def get_reports():
     expenses_result = conn.execute(expenses_query, params).fetchone()
     total_expenses = expenses_result['total_expenses'] if expenses_result['total_expenses'] else 0.0
     
+    owner_draw_result = conn.execute(owner_draw_query, params).fetchone()
+    total_owner_draw = owner_draw_result['total_owner_draw'] if owner_draw_result['total_owner_draw'] else 0.0
+    
     purchases_result = conn.execute(purchases_query, params).fetchone()
     total_purchases = purchases_result['total_purchases'] if purchases_result['total_purchases'] else 0.0
     
@@ -930,10 +1203,95 @@ def get_reports():
         "brewed_total": brewed_total,
         "total_free_drinks": total_free_drinks,
         "total_expenses": total_expenses,
+        "total_owner_draw": total_owner_draw,
         "net_profit": net_profit,
         "recent_sales": [dict(ix) for ix in recent_sales],
         "item_sales": [dict(ix) for ix in item_sales]
     })
+
+# --- Phase 7: Backup ---
+@app.route('/api/backup/csv', methods=['GET'])
+def backup_csv():
+    import csv, zipfile, io
+    from flask import send_file
+    
+    conn = get_db_connection()
+    tables = ['Products_Services', 'Customers', 'Sales', 'Sale_Items', 'Purchases', 'Purchase_Items', 'Expenses', 'Stock_WriteOffs', 'Customer_Credit']
+    
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w') as zf:
+        for table in tables:
+            rows = conn.execute(f"SELECT * FROM {table}").fetchall()
+            if not rows:
+                continue
+            
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+            writer.writerow(rows[0].keys())
+            for row in rows:
+                writer.writerow(row)
+                
+            zf.writestr(f"{table}.csv", csv_buffer.getvalue())
+            
+    conn.close()
+    memory_file.seek(0)
+    
+    import datetime
+    now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'xerox_backup_{now_str}.zip'
+    )
+
+@app.route('/api/backup/gdrive', methods=['POST'])
+def backup_gdrive():
+    import csv, zipfile, io
+    import datetime
+    try:
+        from gdrive_upload import upload_to_drive
+    except ImportError:
+        return jsonify({"message": "Server error: Google API client libraries not installed."}), 500
+        
+    conn = get_db_connection()
+    tables = ['Products_Services', 'Customers', 'Sales', 'Sale_Items', 'Purchases', 'Purchase_Items', 'Expenses', 'Stock_WriteOffs', 'Customer_Credit']
+    
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w') as zf:
+        # Also backup the sqlite file itself for complete backup
+        try:
+            with open('xerox.db', 'rb') as f:
+                zf.writestr('xerox.db', f.read())
+        except Exception:
+            pass
+            
+        for table in tables:
+            rows = conn.execute(f"SELECT * FROM {table}").fetchall()
+            if not rows:
+                continue
+            
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+            writer.writerow(rows[0].keys())
+            for row in rows:
+                writer.writerow(row)
+                
+            zf.writestr(f"{table}.csv", csv_buffer.getvalue())
+            
+    conn.close()
+    memory_file.seek(0)
+    
+    now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'xerox_backup_{now_str}.zip'
+    
+    try:
+        link = upload_to_drive(memory_file, filename)
+        return jsonify({"message": "อัพโหลดไปยัง Google Drive สำเร็จ!", "link": link})
+    except Exception as e:
+        return jsonify({"message": f"Error: {str(e)}"}), 500
+
 
 if __name__ == '__main__':
     init_db()
