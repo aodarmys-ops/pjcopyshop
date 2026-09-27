@@ -1210,41 +1210,7 @@ def get_reports():
     })
 
 # --- Phase 7: Backup ---
-@app.route('/api/backup/csv', methods=['GET'])
-def backup_csv():
-    import csv, zipfile, io
-    from flask import send_file
-    
-    conn = get_db_connection()
-    tables = ['Products_Services', 'Customers', 'Sales', 'Sale_Items', 'Purchases', 'Purchase_Items', 'Expenses', 'Stock_WriteOffs', 'Customer_Credit']
-    
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w') as zf:
-        for table in tables:
-            rows = conn.execute(f"SELECT * FROM {table}").fetchall()
-            if not rows:
-                continue
-            
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer)
-            writer.writerow(rows[0].keys())
-            for row in rows:
-                writer.writerow(row)
-                
-            zf.writestr(f"{table}.csv", csv_buffer.getvalue())
-            
-    conn.close()
-    memory_file.seek(0)
-    
-    import datetime
-    now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    
-    return send_file(
-        memory_file,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name=f'xerox_backup_{now_str}.zip'
-    )
+
 
 @app.route('/api/backup/gdrive', methods=['POST'])
 def backup_gdrive():
