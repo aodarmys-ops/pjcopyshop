@@ -179,14 +179,8 @@
                         title.style.fontWeight = 'bold';
                         title.innerText = name.length > 20 ? name.substring(0, 20) + '...' : name;
                         
-                        const priceDiv = document.createElement('div');
-                        priceDiv.style.fontSize = '14px';
-                        priceDiv.style.fontWeight = 'bold';
-                        priceDiv.innerText = `${price}`;
-                        
                         div.appendChild(title);
                         div.appendChild(img);
-                        div.appendChild(priceDiv);
                         printArea.appendChild(div);
                         
                         JsBarcode(img, barcode, {
