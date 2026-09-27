@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Orders (คิวงานบริการ)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 20px; }
+        .status-badge { cursor: pointer; }
+    </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    
+    <!-- TomSelect -->
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-dark">📋 ระบบคิวงานบริการ (Job Orders)</h2>
+            <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+        </div>
+        
+        <div class="row">
+            <!-- Form -->
+            <div class="col-md-4">
+                <div class="glass-card mb-4">
+                    <h5 class="fw-bold mb-3">สร้างใบรับงานใหม่</h5>
+                    <form id="addJobForm">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ชื่อลูกค้า</label>
+                            <select id="jCustomer" placeholder="เลือกลูกค้า หรือพิมพ์ชื่อเพื่อบันทึกใหม่..." autocomplete="off" required></select>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">จำนวน</label>
+                                <input type="number" class="form-control" id="jQty" value="1" min="1" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">มัดจำ (บาท)</label>
+                                <input type="number" class="form-control" id="jDeposit" value="0" min="0">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">รายละเอียดงาน (เช่น ปริ้นสี 100 แผ่น เข้าเล่ม)</label>
+                            <textarea class="form-control" id="jDetails" rows="4" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100 fw-bold rounded-pill shadow-sm">บันทึกคิวงาน</button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- List -->
+            <div class="col-md-8">
+                <div class="glass-card">
+                    <h5 class="fw-bold mb-3">รายการงานปัจจุบัน</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mt-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>รหัสงาน</th>
+                                    <th>ลูกค้า</th>
+                                    <th>รายละเอียด</th>
+                                    <th>สถานะ</th>
+                                    <th>จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="jobTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div class="modal fade" id="paymentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">💰 ส่งมอบและชำระเงิน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="payJobId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">ระบุสินค้าที่จะตัดสต๊อก (ทางเลือก)</label>
+                        <div class="mb-2 position-relative">
+                            <input type="text" id="barcodeInput" class="form-control" placeholder="สแกนบาร์โค้ด หรือ พิมพ์ชื่อสินค้า (แล้วกด Enter)" autocomplete="off">
+                            <ul id="posAutocomplete" class="list-group position-absolute w-100 shadow-sm" style="z-index:1000; display:none; max-height:200px; overflow-y:auto;"></ul>
+                        </div>
+                        <div class="cart-list flex-grow-1 overflow-auto mt-2 mb-2" style="max-height: 200px;">
+                            <table class="table align-middle table-hover">
+                                <thead>
+                                    <tr class="text-muted small border-bottom">
+                                        <th>รายการ</th>
+                                        <th class="text-center" style="width: 90px;">ราคา</th>
+                                        <th class="text-center" style="width: 80px;">จำนวน</th>
+                                        <th class="text-end">รวม</th>
+                                        <th style="width: 40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="miniCartList">
+                                    <!-- items -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">ยอดสุทธิที่ต้องชำระ (บาท)</label>
+                        <input type="number" class="form-control form-control-lg text-primary fw-bold" id="payAmount" value="0" min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">ส่วนลด (ถ้ามี)</label>
+                        <input type="number" class="form-control" id="payDiscount" value="0" min="0">
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label text-muted small fw-bold">ช่องทางการชำระ</label>
+                            <select class="form-select fw-bold text-primary" id="payMethod" onchange="toggleSplitPayment()">
+                                <option value="Cash">💵 เงินสด</option>
+                                <option value="PromptPay">📱 สแกนจ่าย</option>
+                                <option value="Split">🔀 แยกชำระ (เงินสด+โอน)</option>
+                                <option value="None" class="d-none" id="optNone">❌ ยังไม่ชำระ</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label text-muted small fw-bold">สถานะ</label>
+                            <select class="form-select fw-bold text-success" id="paymentStatus" onchange="togglePaymentStatus()">
+                                <option value="Paid">✅ ชำระแล้ว</option>
+                                <option value="Unpaid">❌ ค้างชำระ (ลูกหนี้)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="splitPaymentDiv" class="row g-2 mb-3 d-none">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">ยอดเงินสด</label>
+                            <input type="number" step="0.01" class="form-control" id="splitCash" value="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">ยอดเงินโอน</label>
+                            <input type="number" step="0.01" class="form-control" id="splitTransfer" value="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="submitPayment()">✅ ยืนยันรับเงิน</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let paymentModal;
+        let customerSelectInstance = null;
+
+        function toggleSplitPayment() {
+            const method = document.getElementById('payMethod').value;
+            const splitDiv = document.getElementById('splitPaymentDiv');
+            if (method === 'Split') {
+                splitDiv.classList.remove('d-none');
+            } else {
+                splitDiv.classList.add('d-none');
+            }
+        }
+
+        function togglePaymentStatus() {
+            const status = document.getElementById('paymentStatus').value;
+            const methodSelect = document.getElementById('payMethod');
+            const optNone = document.getElementById('optNone');
+            
+            if (status === 'Unpaid') {
+                optNone.classList.remove('d-none');
+                methodSelect.value = 'None';
+                methodSelect.disabled = true;
+                document.getElementById('splitPaymentDiv').classList.add('d-none');
+            } else {
+                optNone.classList.add('d-none');
+                methodSelect.disabled = false;
+                if (methodSelect.value === 'None') methodSelect.value = 'Cash';
+                toggleSplitPayment();
+            }
+        }
+
+        const bInput = document.getElementById('barcodeInput');
+        const acList = document.getElementById('posAutocomplete');
+
+        bInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const query = e.target.value.trim();
+                if(!query) return;
+
+                const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+                const products = await res.json();
+                
+                if(products.length === 1 && products[0].barcode === query) {
+                    addProductToMiniCart(products[0]);
+                    bInput.value = '';
+                    acList.style.display = 'none';
+                } else if(products.length > 0) {
+                    addProductToMiniCart(products[0]);
+                    bInput.value = '';
+                    acList.style.display = 'none';
+                } else {
+                    alert("ไม่พบสินค้า");
+                }
+            }
+        });
+
+        bInput.addEventListener('input', async (e) => {
+            const q = e.target.value.trim();
+            if(!q) {
+                acList.style.display = 'none';
+                return;
+            }
+            const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}`);
+            const products = await res.json();
+            
+            acList.innerHTML = '';
+            if(products.length > 0) {
+                products.slice(0, 5).forEach(p => {
+                    let li = document.createElement('li');
+                    li.className = 'list-group-item list-group-item-action cursor-pointer';
+                    li.innerHTML = `<strong>${p.name}</strong> <small class="text-muted ms-1">[${p.barcode || 'ไม่มีบาร์โค้ด'}]</small> <span class="badge bg-primary float-end">฿${p.price}</span>`;
+                    li.onclick = () => {
+                        addProductToMiniCart(p);
+                        bInput.value = '';
+                        acList.style.display = 'none';
+                        bInput.focus();
+                    };
+                    acList.appendChild(li);
+                });
+                acList.style.display = 'block';
+            } else {
+                acList.style.display = 'none';
+            }
+        });
+
+        // Hide autocomplete when clicking outside
+        document.addEventListener('click', (e) => {
+            if (e.target !== bInput && !acList.contains(e.target)) {
+                acList.style.display = 'none';
+            }
+        });
+
+        async function loadCustomers() {
+            const res = await fetch('/api/customers?t=' + Date.now());
+            const customers = await res.json();
+            
+            const select = document.getElementById('jCustomer');
+            if (customerSelectInstance) {
+                customerSelectInstance.destroy();
+            }
+            select.innerHTML = '<option value="">เลือกลูกค้า หรือพิมพ์ชื่อใหม่...</option>';
+            
+            customers.forEach(c => {
+                let displayName = c.name;
+                if(c.phone) displayName += ` (${c.phone})`;
+                select.innerHTML += `<option value="${c.name}">${displayName}</option>`;
+            });
+
+            customerSelectInstance = new TomSelect(select, {
+                create: function(input, callback) {
+                    // Create new customer immediately
+                    fetch('/api/customers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: input, phone: '' })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        callback({ value: input, text: input });
+                    })
+                    .catch(() => {
+                        callback(false);
+                    });
+                },
+                sortField: {
+                    field: "text",
+                    direction: "asc"
+                },
+                placeholder: 'เลือกลูกค้า หรือพิมพ์ชื่อใหม่...'
+            });
+        }
+
+        async function fetchJobs() {
+            const res = await fetch('/api/jobs');
+            const data = await res.json();
+            const tbody = document.getElementById('jobTable');
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">🎉 ตอนนี้คิวงานว่างแล้ว!</td></tr>`;
+                return;
+            }
+
+            data.forEach(j => {
+                let row = `<tr>
+                    <td><small class="text-muted fw-bold">#JOB-${String(j.id).padStart(4, '0')}</small></td>
+                    <td class="fw-bold">${j.customer_name}</td>
+                    <td>
+                        ${j.details}
+                        ${(j.qty || j.deposit) ? `<br><small class="text-muted">จำนวน: ${j.qty || 1} | มัดจำ: ${j.deposit || 0} บาท</small>` : ''}
+                    </td>
+                    <td>
+                        <span class="badge rounded-pill bg-primary p-2 shadow-sm">
+                            📦 ${j.status}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3 mb-1" onclick="openPayment(${j.id}, ${j.deposit || 0})">💰 รับเงิน</button>
+                        <button class="btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-bold px-3" onclick="cancelJob(${j.id})">❌ ยกเลิก</button>
+                    </td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+        
+        async function cancelJob(id) {
+            if(confirm("แน่ใจหรือไม่ว่าต้องการยกเลิกคิวงานนี้?")) {
+                await fetch(`/api/jobs/${id}/cancel`, { method: 'POST' });
+                fetchJobs();
+            }
+        }
+
+
+        
+        let miniCart = [];
+
+        function renderMiniCart() {
+            const list = document.getElementById('miniCartList');
+            list.innerHTML = '';
+            let total = 0;
+            miniCart.forEach((item, index) => {
+                total += (item.price * item.qty);
+                list.innerHTML += `
+                    <tr>
+                        <td>
+                            <div class="fw-bold">${item.name}</div>
+                        </td>
+                        <td style="width: 90px;">
+                            <div class="input-group input-group-sm">
+                                <input type="number" step="0.01" class="form-control text-center fw-bold" value="${item.price}" onchange="updateMiniCartPrice(${index}, this.value)">
+                            </div>
+                        </td>
+                        <td style="width: 80px;">
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateMiniCartQty(${index}, this.value)">
+                            </div>
+                        </td>
+                        <td class="text-end fw-bold text-dark">${(item.price * item.qty).toFixed(2)}</td>
+                        <td class="text-end" style="width: 40px;">
+                            <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="removeMiniCartItem(${index})">✖</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            if(miniCart.length > 0) {
+                document.getElementById('payAmount').value = total;
+            }
+        }
+
+        function updateMiniCartQty(index, qty) {
+            const parsedQty = parseInt(qty) || 1;
+            const item = miniCart[index];
+            if (item.type !== 'Service' && parsedQty > item.stock_qty) {
+                alert(`จำนวนสินค้าเกินสต๊อกที่มี (มีอยู่ ${item.stock_qty})!`);
+                item.qty = item.stock_qty;
+                setTimeout(renderMiniCart, 10);
+            } else {
+                item.qty = parsedQty;
+                renderMiniCart();
+            }
+        }
+
+        function updateMiniCartPrice(index, price) {
+            miniCart[index].price = parseFloat(price) || 0;
+            renderMiniCart();
+        }
+
+        function removeMiniCartItem(index) {
+            miniCart.splice(index, 1);
+            renderMiniCart();
+        }
+
+        // product search logic is now handled by TomSelect in loadProducts()
+        function addProductToMiniCart(p) {
+            if (p.type !== 'Service' && p.stock_qty <= 0) {
+                alert("สินค้าหมดสต๊อก ไม่สามารถขายได้!");
+                return;
+            }
+            const existing = miniCart.find(i => i.id === p.id);
+            if (existing) {
+                if (p.type !== 'Service' && (existing.qty + 1) > p.stock_qty) {
+                    alert(`จำนวนสินค้าเกินสต๊อกที่มี (มีอยู่ ${p.stock_qty})!`);
+                    return;
+                }
+                existing.qty += 1;
+            } else {
+                miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1, type: p.type, stock_qty: p.stock_qty });
+            }
+            renderMiniCart();
+        }
+
+        function openPayment(id, deposit = 0) {
+            document.getElementById('payJobId').value = id;
+            document.getElementById('payAmount').value = '';
+            document.getElementById('payDiscount').value = deposit;
+            document.getElementById('payMethod').value = 'Cash';
+            document.getElementById('paymentStatus').value = 'Paid';
+            togglePaymentStatus();
+            
+            miniCart = [];
+            renderMiniCart();
+            
+            if (!paymentModal) {
+                paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+            }
+            paymentModal.show();
+            
+            // Focus search input after modal is shown
+            document.getElementById('paymentModal').addEventListener('shown.bs.modal', function () {
+                document.getElementById('barcodeInput').focus();
+            }, { once: true });
+        }
+
+        async function submitPayment() {
+            const id = document.getElementById('payJobId').value;
+            const amount = parseFloat(document.getElementById('payAmount').value) || 0;
+            const discount = parseFloat(document.getElementById('payDiscount').value) || 0;
+            const method = document.getElementById('payMethod').value;
+            
+            if (amount <= 0 && miniCart.length === 0) {
+                alert("กรุณากรอกยอดเงินสุทธิที่ถูกต้อง");
+                return;
+            }
+
+            const res = await fetch(`/api/jobs/${id}/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    total_amount: amount,
+                    discount: discount,
+                    payment_method: document.getElementById('payMethod').value,
+                    payment_status: document.getElementById('paymentStatus').value,
+                    split_cash: parseFloat(document.getElementById('splitCash').value) || 0,
+                    split_transfer: parseFloat(document.getElementById('splitTransfer').value) || 0,
+                    items: miniCart
+                })
+            });
+            
+            if (res.ok) {
+                paymentModal.hide();
+                fetchJobs();
+            } else {
+                alert("เกิดข้อผิดพลาดในการบันทึก");
+            }
+        }
+
+        document.getElementById('addJobForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const customerName = document.getElementById('jCustomer').value;
+            if (!customerName) {
+                alert("กรุณาระบุชื่อลูกค้า");
+                return;
+            }
+            
+            const payload = {
+                customer_name: customerName,
+                details: document.getElementById('jDetails').value,
+                qty: parseInt(document.getElementById('jQty').value) || 1,
+                deposit: parseFloat(document.getElementById('jDeposit').value) || 0
+            };
+            
+            await fetch('/api/jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            e.target.reset();
+            if (customerSelectInstance) customerSelectInstance.setValue('');
+            fetchJobs();
+        });
+
+        // Init
+        loadCustomers();
+        fetchJobs();
+    </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
+</body>
+</html>

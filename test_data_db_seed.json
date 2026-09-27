@@ -1,0 +1,493 @@
+{
+  "Users": [
+    {
+      "username": "Admin",
+      "role": "Admin",
+      "pin": "1234"
+    },
+    {
+      "username": "แคชเชียร์_1",
+      "role": "Cashier",
+      "pin": "2222"
+    },
+    {
+      "username": "แคชเชียร์_2",
+      "role": "Cashier",
+      "pin": "3333"
+    },
+    {
+      "username": "ผู้จัดการ",
+      "role": "Manager",
+      "pin": "9999"
+    }
+  ],
+  "Products_Services": [
+    {
+      "name": "ถ่ายเอกสาร A4 ขาวดำ",
+      "type": "Service",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 1,
+      "cost": 0.3,
+      "stock_qty": 0,
+      "reorder_level": 0,
+      "is_active": 1
+    },
+    {
+      "name": "ถ่ายเอกสาร A4 สี",
+      "type": "Service",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 5,
+      "cost": 2.0,
+      "stock_qty": 0,
+      "reorder_level": 0,
+      "is_active": 1
+    },
+    {
+      "name": "พิมพ์เอกสาร A4 ขาวดำ (ลูกค้า)",
+      "type": "Service",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 3,
+      "cost": 1.0,
+      "stock_qty": 0,
+      "reorder_level": 0,
+      "is_active": 1
+    },
+    {
+      "name": "เข้าเล่มสปิไรน์",
+      "type": "Service",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 20,
+      "cost": 5.0,
+      "stock_qty": 0,
+      "reorder_level": 0,
+      "is_active": 1
+    },
+    {
+      "name": "ถ่ายบัตร",
+      "type": "Service",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 5,
+      "cost": 1.0,
+      "stock_qty": 0,
+      "reorder_level": 0,
+      "is_active": 1
+    },
+    {
+      "name": "ชาไทย เย็น",
+      "type": "Brewed Drink",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 35,
+      "cost": 8.0,
+      "stock_qty": 50,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "กาแฟเย็น",
+      "type": "Brewed Drink",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 35,
+      "cost": 10.0,
+      "stock_qty": 40,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "โอวัลตินเย็น",
+      "type": "Brewed Drink",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 35,
+      "cost": 12.0,
+      "stock_qty": 30,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "ชามะนาว เย็น",
+      "type": "Brewed Drink",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 30,
+      "cost": 7.0,
+      "stock_qty": 35,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "ชาเขียว เย็น",
+      "type": "Brewed Drink",
+      "barcode": null,
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 35,
+      "cost": 9.0,
+      "stock_qty": 25,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "กระดาษ A4 Navigator 80g (รีม)",
+      "type": "Stationery",
+      "barcode": "88888881",
+      "brand": "Navigator",
+      "model": "80g",
+      "color": "ขาว",
+      "price": 120,
+      "cost": 85.0,
+      "stock_qty": 200,
+      "reorder_level": 20,
+      "is_active": 1
+    },
+    {
+      "name": "ปากกา Pilot สีน้ำเงิน",
+      "type": "Stationery",
+      "barcode": "88888882",
+      "brand": "Pilot",
+      "model": "BP-S",
+      "color": "น้ำเงิน",
+      "price": 10,
+      "cost": 5.0,
+      "stock_qty": 500,
+      "reorder_level": 50,
+      "is_active": 1
+    },
+    {
+      "name": "ดินสอ 2B Staedtler",
+      "type": "Stationery",
+      "barcode": "88888883",
+      "brand": "Staedtler",
+      "model": "134",
+      "color": "เหลือง",
+      "price": 15,
+      "cost": 6.0,
+      "stock_qty": 300,
+      "reorder_level": 30,
+      "is_active": 1
+    },
+    {
+      "name": "แฟ้ม A4 สีน้ำเงิน",
+      "type": "Stationery",
+      "barcode": "88888884",
+      "brand": "ตราช้าง",
+      "model": "A4",
+      "color": "น้ำเงิน",
+      "price": 25,
+      "cost": 12.0,
+      "stock_qty": 100,
+      "reorder_level": 15,
+      "is_active": 1
+    },
+    {
+      "name": "เทปใส 1 นิ้ว OPP",
+      "type": "Stationery",
+      "barcode": "88888885",
+      "brand": "",
+      "model": "",
+      "color": "ใส",
+      "price": 20,
+      "cost": 8.0,
+      "stock_qty": 150,
+      "reorder_level": 20,
+      "is_active": 1
+    },
+    {
+      "name": "น้ำดำ Pepsi 325ml",
+      "type": "Soft drinks",
+      "barcode": "99999991",
+      "brand": "Pepsi",
+      "model": "325ml",
+      "color": "",
+      "price": 15,
+      "cost": 9.5,
+      "stock_qty": 120,
+      "reorder_level": 24,
+      "is_active": 1
+    },
+    {
+      "name": "น้ำเขียว Sprite 325ml",
+      "type": "Soft drinks",
+      "barcode": "99999992",
+      "brand": "Sprite",
+      "model": "325ml",
+      "color": "",
+      "price": 15,
+      "cost": 9.5,
+      "stock_qty": 100,
+      "reorder_level": 24,
+      "is_active": 1
+    },
+    {
+      "name": "น้ำส้ม Minute Maid 160ml",
+      "type": "Soft drinks",
+      "barcode": "99999993",
+      "brand": "Minute Maid",
+      "model": "160ml",
+      "color": "",
+      "price": 12,
+      "cost": 7.0,
+      "stock_qty": 80,
+      "reorder_level": 24,
+      "is_active": 1
+    },
+    {
+      "name": "น้ำดื่ม Singha 600ml",
+      "type": "Water",
+      "barcode": "77777771",
+      "brand": "สิงห์",
+      "model": "600ml",
+      "color": "",
+      "price": 7,
+      "cost": 4.0,
+      "stock_qty": 200,
+      "reorder_level": 48,
+      "is_active": 1
+    },
+    {
+      "name": "น้ำดื่ม Crystal 1.5L",
+      "type": "Water",
+      "barcode": "77777772",
+      "brand": "คริสตัล",
+      "model": "1.5L",
+      "color": "",
+      "price": 15,
+      "cost": 8.0,
+      "stock_qty": 100,
+      "reorder_level": 24,
+      "is_active": 1
+    },
+    {
+      "name": "Flash Drive 32GB Kingston",
+      "type": "IT equipment",
+      "barcode": "66666661",
+      "brand": "Kingston",
+      "model": "32GB USB3",
+      "color": "ดำ",
+      "price": 250,
+      "cost": 180.0,
+      "stock_qty": 30,
+      "reorder_level": 5,
+      "is_active": 1
+    },
+    {
+      "name": "สาย USB-C 1m",
+      "type": "IT equipment",
+      "barcode": "66666662",
+      "brand": "",
+      "model": "USB-C",
+      "color": "ดำ",
+      "price": 90,
+      "cost": 45.0,
+      "stock_qty": 20,
+      "reorder_level": 5,
+      "is_active": 1
+    },
+    {
+      "name": "กรอบรูป 4x6",
+      "type": "Gift shop",
+      "barcode": "55555551",
+      "brand": "",
+      "model": "4x6",
+      "color": "ขาว",
+      "price": 59,
+      "cost": 30.0,
+      "stock_qty": 50,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "สมุดโน้ต A5 ลายน่ารัก",
+      "type": "Gift shop",
+      "barcode": "55555552",
+      "brand": "",
+      "model": "A5",
+      "color": "ชมพู",
+      "price": 45,
+      "cost": 22.0,
+      "stock_qty": 60,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "ลูกบอลยางขนาดเล็ก",
+      "type": "Toys",
+      "barcode": "44444441",
+      "brand": "",
+      "model": "",
+      "color": "แดง",
+      "price": 25,
+      "cost": 12.0,
+      "stock_qty": 40,
+      "reorder_level": 10,
+      "is_active": 1
+    },
+    {
+      "name": "น้ำหอม Tester 50ml",
+      "type": "Perfume",
+      "barcode": "33333331",
+      "brand": "",
+      "model": "Tester",
+      "color": "",
+      "price": 299,
+      "cost": 150.0,
+      "stock_qty": 10,
+      "reorder_level": 2,
+      "is_active": 1
+    },
+    {
+      "name": "ถุงพลาสติก (มัด 100 ใบ)",
+      "type": "Retail",
+      "barcode": "22222221",
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 15,
+      "cost": 7.0,
+      "stock_qty": 300,
+      "reorder_level": 50,
+      "is_active": 1
+    },
+    {
+      "name": "กล่องกระดาษ A4",
+      "type": "Retail",
+      "barcode": "22222222",
+      "brand": "",
+      "model": "",
+      "color": "",
+      "price": 8,
+      "cost": 3.0,
+      "stock_qty": 200,
+      "reorder_level": 50,
+      "is_active": 1
+    }
+  ],
+  "Customers": [
+    {
+      "name": "นางสาวสมใจ ใจดี",
+      "phone": "0812345678",
+      "points": 50,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "นายประสิทธิ์ มีทรัพย์",
+      "phone": "0823456789",
+      "points": 0,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "คุณมาลี สวยงาม",
+      "phone": "0834567890",
+      "points": 120,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "นายวิชัย เก่งกาจ",
+      "phone": "0845678901",
+      "points": 30,
+      "allow_points_with_debt": 1
+    },
+    {
+      "name": "ร้านค้า ABC",
+      "phone": "0856789012",
+      "points": 0,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "บริษัท XYZ จำกัด",
+      "phone": "0267890123",
+      "points": 200,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "คุณสุดา รักดี",
+      "phone": "0878901234",
+      "points": 10,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "นายอานนท์ ชาญชัย",
+      "phone": "0889012345",
+      "points": 0,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "คุณนิดา เจ็ตสกี",
+      "phone": "0890123456",
+      "points": 60,
+      "allow_points_with_debt": 0
+    },
+    {
+      "name": "นักเรียน ม.ปลาย",
+      "phone": "0801234567",
+      "points": 80,
+      "allow_points_with_debt": 0
+    }
+  ],
+  "Business_Date": [
+    {
+      "current_date": "2026-09-27",
+      "is_closed": 0,
+      "starting_cash": 500.0
+    }
+  ],
+  "Promotions": [
+    {
+      "name": "ส่วนลดนักเรียน 10%",
+      "promo_type": "percentage",
+      "discount_value": 10,
+      "condition_type": "min_amount",
+      "condition_value": 100,
+      "is_active": 1
+    },
+    {
+      "name": "ลด 20 บาท เมื่อซื้อครบ 200 บาท",
+      "promo_type": "fixed_amount",
+      "discount_value": 20,
+      "condition_type": "min_amount",
+      "condition_value": 200,
+      "is_active": 1
+    },
+    {
+      "name": "ซื้อ 5 แถม 1 (เครื่องดื่ม)",
+      "promo_type": "buy_x_get_y",
+      "discount_value": 1,
+      "condition_type": "min_qty",
+      "condition_value": 5,
+      "is_active": 1
+    },
+    {
+      "name": "โปรเก่า (ยกเลิก)",
+      "promo_type": "percentage",
+      "discount_value": 5,
+      "condition_type": null,
+      "condition_value": null,
+      "is_active": 0
+    }
+  ]
+}

@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports (รายงานและสถิติ)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 25px; height: 100%;}
+        .stat-value { font-size: 2.5rem; font-weight: 800; }
+        .table-responsive { max-height: 350px; overflow-y: auto; }
+        .table-responsive thead th { position: sticky; top: 0; background-color: #f8f9fa; z-index: 1; }
+    </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-dark">📊 รายงานยอดขายและกำไร (Reports)</h2>
+            <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+        </div>
+        
+        <!-- Filter Card -->
+        <div class="glass-card mb-4">
+            <div class="row align-items-end">
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <label class="form-label text-muted small fw-bold">ตั้งแต่วันที่</label>
+                    <input type="date" id="startDate" class="form-control rounded-pill">
+                </div>
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <label class="form-label text-muted small fw-bold">ถึงวันที่</label>
+                    <input type="date" id="endDate" class="form-control rounded-pill">
+                </div>
+                <div class="col-md-4 d-flex gap-2">
+                    <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="fetchReports()">🔍 กรองข้อมูล</button>
+                    <button class="btn btn-outline-secondary w-100 rounded-pill fw-bold" onclick="clearFilter()">❌ ล้างค่า</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Financial Dashboards -->
+        <div class="row g-4 mb-4">
+            <!-- Profit & Loss Dashboard -->
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100" style="border-top: 5px solid #0d6efd !important; border-radius: 10px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-primary mb-1"><span class="fs-4">📈</span> มุมมองกำไรขาดทุน (Profit & Loss)</h5>
+                        <small class="text-muted d-block mb-4">สะท้อนผลประกอบการว่า "ธุรกิจมีกำไรหรือไม่" (ตามหลักบัญชี)</small>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">ยอดขายรวม (Total Sales)</span>
+                            <span class="fw-bold text-success fs-5" id="valRevenue">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: ยอดขายฝากขาย (Consignment)</span>
+                            <span class="fw-bold text-danger fs-5" id="valConsignmentRevenue">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: ต้นทุนสินค้าขาย (Cost of Goods)</span>
+                            <span class="fw-bold text-danger fs-5" id="valCostOfGoods">0.00</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">หัก: รายจ่ายดำเนินงาน (Expenses)</span>
+                            <span class="fw-bold text-danger fs-5" id="valExpenses">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">+/-: ปรับปรุงสต๊อกจากการนับ (Stock Adjustment)</span>
+                            <span class="fw-bold fs-5" id="valStockAdj">0.00</span>
+                        </div>
+                        
+                        <hr class="mt-auto mb-4">
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="fw-bold m-0 text-dark">กำไรสุทธิ (Net Profit)</h4>
+                            <h2 class="fw-bold m-0" id="valNetProfit">0.00</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cash Flow Dashboard -->
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100" style="border-top: 5px solid #198754 !important; border-radius: 10px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-success mb-1"><span class="fs-4">💸</span> มุมมองกระแสเงินสด (Cash Flow)</h5>
+                        <small class="text-muted d-block mb-4">สะท้อนการเข้า-ออกของเงิน ว่า "มีเงินเหลือในมือเท่าไหร่"</small>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">รับเงินสด (Cash In)</span>
+                            <span class="fw-bold text-success fs-5" id="valCashFlowIn">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">รับเงินโอน / ช่องทางอื่นๆ</span>
+                            <span class="fw-bold text-success fs-5" id="valTransferIn">0.00</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: ซื้อสินค้าเข้าสต๊อก (Purchases)</span>
+                            <span class="fw-bold text-danger fs-5" id="valPurchasesOut">0.00</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary fw-bold">หัก: รายจ่ายร้าน (OPEX Expenses)</span>
+                            <span class="fw-bold text-danger fs-5" id="valExpensesOut">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">หัก: ถอนใช้ส่วนตัว (Owner Draw)</span>
+                            <span class="fw-bold text-danger fs-5" id="valOwnerDrawOut">0.00</span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary fw-bold">หัก: คืนเงินฝากขาย (Consignment)</span>
+                            <span class="fw-bold text-danger fs-5" id="valConsignmentOut">0.00</span>
+                        </div>
+                        
+                        <hr class="mt-auto mb-4">
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="fw-bold m-0 text-dark">เงินสดคงเหลือสุทธิ (Net Cash)</h4>
+                            <h2 class="fw-bold m-0" id="valNetCashFlow">0.00</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #333 !important;">
+                    <small class="text-muted fw-bold mb-2">รับเงินสด</small>
+                    <h4 class="fw-bold m-0" id="valCash">0.00</h4>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #0dcaf0 !important;">
+                    <small class="text-muted fw-bold mb-2">รับเงินโอน</small>
+                    <h4 class="fw-bold m-0 text-info" id="valTransfer">0.00</h4>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #dc3545 !important;">
+                    <small class="text-muted fw-bold mb-2">ยอดค้างชำระ (บิลค้าง)</small>
+                    <h4 class="fw-bold m-0 text-danger" id="valUnpaid">0.00</h4>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 h-100" style="border-bottom: 4px solid #0d6efd !important;">
+                    <small class="text-muted fw-bold mb-2">รับชำระบิลค้าง</small>
+                    <h4 class="fw-bold m-0 text-primary" id="valPaidUnpaid">0.00</h4>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tables -->
+        <div class="row g-4">
+            <!-- Itemized Sales Tables -->
+            <div class="col-md-6 d-flex flex-column">
+                <div class="glass-card h-100 d-flex flex-column">
+                    
+                    <h5 class="fw-bold mb-3 text-warning text-dark">🥤 สรุปยอดขายเครื่องดื่มชง</h5>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ชื่อสินค้า</th>
+                                    <th class="text-center">จำนวนรวม (แก้ว)</th>
+                                    <th class="text-end">เป็นเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="brewedSalesTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                            <tfoot id="brewedSalesFooter" class="table-light">
+                            </tfoot>
+                        </table>
+                    </div>
+                    
+                    <hr class="my-4">
+
+                    <h5 class="fw-bold mb-3 text-primary" id="itemSalesTitle">📦 สรุปยอดขายสินค้าทั่วไป / บริการ</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ชื่อสินค้า</th>
+                                    <th class="text-center">จำนวนที่ขายได้</th>
+                                    <th class="text-end">เป็นเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemSalesTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                            <tfoot id="itemSalesFooter" class="table-light">
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Sales Table -->
+            <div class="col-md-6 d-flex flex-column">
+                <div class="glass-card h-100 d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold m-0" id="salesTableTitle">ประวัติการขายล่าสุด</h5>
+                        <select id="salesPageSize" class="form-select form-select-sm w-auto" onchange="changeSalesPageSize()">
+                            <option value="10" selected>แสดง 10 รายการ</option>
+                            <option value="20">แสดง 20 รายการ</option>
+                            <option value="50">แสดง 50 รายการ</option>
+                            <option value="100">แสดง 100 รายการ</option>
+                        </select>
+                    </div>
+                    <div class="table-responsive flex-grow-1" style="max-height: none; min-height: 400px;">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>รหัสบิล</th>
+                                    <th>วันเวลาที่ขาย</th>
+                                    <th>สถานะ</th>
+                                    <th class="text-end">ยอดเงิน</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <small class="text-muted" id="salesPageInfo"></small>
+                        <ul class="pagination pagination-sm m-0" id="salesPagination">
+                            <!-- Pagination rendered by JS -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allRecentSales = [];
+        let currentSalesPage = 1;
+        let salesPageSize = 10;
+        
+        // Format Currency
+        const fmt = (num) => '' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY -> 27 ก.ย. 2569) without time
+        function formatThaiDateOnly(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = d.getDate();
+            const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+            const monthStr = months[d.getMonth()];
+            const year = d.getFullYear() + 543;
+            return `${day} ${monthStr} ${year}`;
+        }
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY -> 27 ก.ย. 2569)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = d.getDate();
+            const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+            const monthStr = months[d.getMonth()];
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day} ${monthStr} ${year} ${hours}:${minutes}`;
+        }
+
+        async function fetchReports() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let url = '/api/reports';
+            if (startDate && endDate) {
+                url += `?start_date=${startDate}&end_date=${endDate}`;
+                document.getElementById('salesTableTitle').innerText = `ประวัติการขาย (${formatThaiDateOnly(startDate)} ถึง ${formatThaiDateOnly(endDate)})`;
+            } else {
+                document.getElementById('salesTableTitle').innerText = `ประวัติการขายล่าสุด`;
+            }
+
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            // Update Stats
+            const rawRevenue = parseFloat(data.total_revenue) || 0;
+            const brewedTotal = parseFloat(data.brewed_total) || 0;
+            const revenue = rawRevenue - brewedTotal;
+            const cost = parseFloat(data.total_cost) || 0;
+            const expenses = parseFloat(data.total_expenses) || 0;
+            const adjustment = parseFloat(data.total_adjustment) || 0;
+            const netProfit = revenue - cost - expenses + adjustment;
+
+            // Note: The user requested NO ฿ symbol and use fmt() which uses commas and 2 decimals.
+            document.getElementById('valRevenue').innerText = fmt(rawRevenue);
+            document.getElementById('valConsignmentRevenue').innerText = fmt(brewedTotal);
+            document.getElementById('valCostOfGoods').innerText = fmt(cost);
+            document.getElementById('valExpenses').innerText = fmt(expenses);
+            
+            const adjEl = document.getElementById('valStockAdj');
+            if (adjustment > 0) {
+                adjEl.innerText = "+" + fmt(adjustment);
+                adjEl.className = "fw-bold text-success fs-5";
+            } else if (adjustment < 0) {
+                adjEl.innerText = fmt(adjustment);
+                adjEl.className = "fw-bold text-danger fs-5";
+            } else {
+                adjEl.innerText = "0.00";
+                adjEl.className = "fw-bold text-muted fs-5";
+            }
+            
+            document.getElementById('valCash').innerText = fmt(data.cash_total);
+            document.getElementById('valTransfer').innerText = fmt(data.transfer_total);
+            document.getElementById('valUnpaid').innerText = fmt(data.unpaid_total || 0);
+            document.getElementById('valPaidUnpaid').innerText = fmt(data.paid_unpaid_total || 0);
+            
+            
+            // Cash Flow Calculation
+            const cashIn = parseFloat(data.cash_total) || 0;
+            const transferIn = parseFloat(data.transfer_total) || 0;
+            const purchases = parseFloat(data.total_purchases) || 0;
+            const ownerDraw = parseFloat(data.total_owner_draw) || 0;
+            const netCashFlow = cashIn + transferIn - purchases - expenses - ownerDraw - brewedTotal;
+
+            document.getElementById('valCashFlowIn').innerText = fmt(cashIn);
+            document.getElementById('valTransferIn').innerText = fmt(transferIn);
+            document.getElementById('valPurchasesOut').innerText = fmt(purchases);
+            document.getElementById('valExpensesOut').innerText = fmt(expenses);
+            document.getElementById('valOwnerDrawOut').innerText = fmt(ownerDraw);
+            document.getElementById('valConsignmentOut').innerText = fmt(brewedTotal);
+
+            const cashEl = document.getElementById('valNetCashFlow');
+            cashEl.innerText = fmt(netCashFlow);
+            if(netCashFlow < 0) {
+                cashEl.classList.remove('text-success');
+                cashEl.classList.add('text-danger');
+            } else {
+                cashEl.classList.remove('text-danger');
+                cashEl.classList.add('text-success');
+            }
+
+            const profitEl = document.getElementById('valNetProfit');
+            profitEl.innerText = fmt(netProfit);
+            if(netProfit < 0) {
+                profitEl.classList.remove('text-success');
+                profitEl.classList.add('text-danger');
+            } else {
+                profitEl.classList.remove('text-danger');
+                profitEl.classList.add('text-success');
+            }
+            
+            // Update Table - Item Sales
+            const itemTbody = document.getElementById('itemSalesTable');
+            const brewedTbody = document.getElementById('brewedSalesTable');
+            const brewedTfoot = document.getElementById('brewedSalesFooter');
+            
+            itemTbody.innerHTML = '';
+            brewedTbody.innerHTML = '';
+            brewedTfoot.innerHTML = '';
+            
+            let totalBrewedQty = 0;
+            let totalBrewedAmount = 0;
+            let totalItemQty = 0;
+            let totalItemAmount = 0;
+            
+            if (data.item_sales && data.item_sales.length > 0) {
+                const regularItems = data.item_sales.filter(i => i.type !== 'Brewed Drink');
+                const brewedItems = data.item_sales.filter(i => i.type === 'Brewed Drink');
+                
+                // Regular Items
+                if (regularItems.length > 0) {
+                    regularItems.forEach(item => {
+                        totalItemQty += parseInt(item.total_qty);
+                        totalItemAmount += parseFloat(item.total_amount);
+                        let row = `<tr>
+                            <td class="fw-bold text-dark">${item.name}</td>
+                            <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${item.total_qty}</span></td>
+                            <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
+                        </tr>`;
+                        itemTbody.innerHTML += row;
+                    });
+                } else {
+                    itemTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขาย</td></tr>`;
+                }
+
+                // Brewed Items
+                if (brewedItems.length > 0) {
+                    brewedItems.forEach(item => {
+                        totalBrewedQty += parseInt(item.total_qty);
+                        totalBrewedAmount += parseFloat(item.total_amount);
+                        let row = `<tr>
+                            <td class="fw-bold text-dark">${item.name}</td>
+                            <td class="text-center"><span class="badge bg-warning text-dark rounded-pill px-3">${item.total_qty}</span></td>
+                            <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
+                        </tr>`;
+                        brewedTbody.innerHTML += row;
+                    });
+                } else {
+                    brewedTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขาย</td></tr>`;
+                }
+                
+            } else {
+                itemTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
+                brewedTbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>`;
+            }
+
+            // Render general items footer
+            const itemTfoot = document.getElementById('itemSalesFooter');
+            if (totalItemQty > 0) {
+                itemTfoot.innerHTML = `
+                    <tr class="fs-5">
+                        <td class="text-end text-dark fw-bold">รวมทั้งหมด:</td>
+                        <td class="text-center fw-bold text-primary">${totalItemQty}</td>
+                        <td class="text-end fw-bold text-success">${fmt(totalItemAmount)}</td>
+                    </tr>
+                `;
+            } else {
+                itemTfoot.innerHTML = '';
+            }
+
+            // Render free drinks breakdown
+            const freeQty = data.total_free_drinks || 0;
+            const normalQty = Math.max(0, totalBrewedQty - freeQty);
+            
+            if (totalBrewedQty > 0) {
+                brewedTfoot.innerHTML = `
+                    <tr>
+                        <td class="text-end text-muted small">ยอดขายปกติ:</td>
+                        <td class="text-center fw-bold text-primary">${normalQty}</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="text-end text-muted small">แลกด้วยแต้มสะสม:</td>
+                        <td class="text-center fw-bold text-danger">${freeQty}</td>
+                        <td></td>
+                    </tr>
+                    <tr class="fs-5">
+                        <td class="text-end text-dark">รวมทั้งหมด:</td>
+                        <td class="text-center fw-bold text-dark">${totalBrewedQty} แก้ว</td>
+                        <td class="text-end fw-bold text-success">${fmt(totalBrewedAmount)}</td>
+                    </tr>
+                `;
+            }
+            
+            
+            // Render Recent Sales with Pagination
+            allRecentSales = data.recent_sales || [];
+            currentSalesPage = 1;
+            renderRecentSales();
+        }
+
+        function changeSalesPageSize() {
+            salesPageSize = parseInt(document.getElementById('salesPageSize').value);
+            currentSalesPage = 1;
+            renderRecentSales();
+        }
+
+        function goToSalesPage(page) {
+            currentSalesPage = page;
+            renderRecentSales();
+        }
+
+        function renderRecentSales() {
+            const tbody = document.getElementById('salesTable');
+            tbody.innerHTML = '';
+            
+            if (allRecentSales.length > 0) {
+                const totalPages = Math.ceil(allRecentSales.length / salesPageSize);
+                if (currentSalesPage > totalPages) currentSalesPage = totalPages;
+                
+                const startIdx = (currentSalesPage - 1) * salesPageSize;
+                const endIdx = startIdx + salesPageSize;
+                const pageData = allRecentSales.slice(startIdx, endIdx);
+
+                pageData.forEach(s => {
+                    const d = formatThaiDate(s.timestamp);
+                    const isVoided = s.payment_status === 'ยกเลิกบิล';
+                    let statusText = s.payment_method;
+                    let badgeColor = 'secondary';
+                    
+                    if (isVoided) {
+                        statusText = 'ยกเลิกบิล';
+                        badgeColor = 'danger';
+                    } else if (s.payment_status === 'Unpaid') {
+                        statusText = 'ค้างชำระ';
+                        badgeColor = 'danger';
+                    } else if (s.payment_status === 'ชำระบิลค้างชำระ') {
+                        statusText = 'รับชำระบิลค้าง';
+                        badgeColor = 'primary';
+                    } else {
+                        if (s.payment_method === 'Cash') {
+                            statusText = 'เงินสด';
+                            badgeColor = 'success';
+                        }
+                        else if (s.payment_method === 'PromptPay') {
+                            statusText = 'เงินโอน';
+                            badgeColor = 'info text-dark';
+                        }
+                        else if (s.payment_method === 'Split') {
+                            statusText = 'แยกชำระ';
+                            badgeColor = 'warning text-dark';
+                        }
+                        else if (s.payment_method === 'Credit Card') {
+                            statusText = 'บัตรเครดิต';
+                            badgeColor = 'warning text-dark';
+                        }
+                    }
+                    
+                    const rowClass = isVoided ? 'text-decoration-line-through text-muted' : '';
+
+                    let row = `<tr class="${rowClass}">
+                        <td>
+                            <small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small>
+                            ${s.notes ? `<br><small class="text-info fw-bold" style="font-size:0.75rem;">${s.notes}</small>` : ''}
+                        </td>
+                        <td>${d}</td>
+                        <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
+                        <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
+                        <td class="text-center">
+                            <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️</a>
+                            ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌</button>` : ''}
+                        </td>
+                    </tr>`;
+                    tbody.innerHTML += row;
+                });
+
+                document.getElementById('salesPageInfo').innerText = `แสดง ${startIdx + 1} - ${Math.min(endIdx, allRecentSales.length)} จากทั้งหมด ${allRecentSales.length} รายการ`;
+                renderPaginationUI(totalPages);
+            } else {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">ไม่พบประวัติการขายในช่วงเวลานี้</td></tr>`;
+                document.getElementById('salesPageInfo').innerText = '';
+                document.getElementById('salesPagination').innerHTML = '';
+            }
+        }
+
+        function renderPaginationUI(totalPages) {
+            const ul = document.getElementById('salesPagination');
+            ul.innerHTML = '';
+            
+            if (totalPages <= 1) return;
+
+            // Prev Button
+            ul.innerHTML += `
+                <li class="page-item ${currentSalesPage === 1 ? 'disabled' : ''}">
+                    <button class="page-link" onclick="goToSalesPage(${currentSalesPage - 1})">ย้อนกลับ</button>
+                </li>
+            `;
+            
+            // Next Button
+            ul.innerHTML += `
+                <li class="page-item ${currentSalesPage === totalPages ? 'disabled' : ''}">
+                    <button class="page-link" onclick="goToSalesPage(${currentSalesPage + 1})">ถัดไป</button>
+                </li>
+            `;
+        }
+
+        async function voidSale(id) {
+            if(confirm('คุณแน่ใจหรือไม่ว่าต้องการ "ยกเลิกบิล" นี้?\n(ระบบจะคืนสต๊อกสินค้าและหักยอดขายออก)')) {
+                const res = await fetch(`/api/sales/${id}/void`, { method: 'POST' });
+                if(res.ok) {
+                    alert('ยกเลิกบิลสำเร็จ!');
+                    fetchReports();
+                } else {
+                    alert('เกิดข้อผิดพลาดในการยกเลิกบิล');
+                }
+            }
+        }
+
+        function clearFilter() {
+            setToday();
+            fetchReports();
+        }
+
+        function setToday() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            const dateString = `${yyyy}-${mm}-${dd}`;
+            
+            document.getElementById('startDate').value = dateString;
+            document.getElementById('endDate').value = dateString;
+        }
+
+        // Init
+        setToday();
+        fetchReports();
+    </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y",
+                defaultDate: new Date(),
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
+</body>
+</html>

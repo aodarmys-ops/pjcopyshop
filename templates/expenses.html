@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expenses (บันทึกรายจ่าย)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 20px; }
+    </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-dark">💰 บันทึกรายจ่าย (Expenses)</h2>
+            <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+        </div>
+        
+        <div class="row">
+            <!-- Form -->
+            <div class="col-md-4">
+                <div class="glass-card mb-4">
+                    <h5 class="fw-bold mb-3 text-danger">บันทึกรายจ่ายใหม่</h5>
+                    <form id="addExpenseForm">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">รายการ / คำอธิบาย (เช่น ค่าไฟ, ค่ากระดาษ)</label>
+                            <input type="text" class="form-control" id="eDesc" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">จำนวนเงิน (บาท)</label>
+                            <input type="number" step="0.01" class="form-control" id="eAmount" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ประเภท</label>
+                            <select class="form-select" id="eType">
+                                <option value="OPEX">รายจ่ายร้าน (OPEX)</option>
+                                <option value="Owner Draw">ถอนใช้ส่วนตัว (ไม่หักกำไร)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ช่องทางชำระ</label>
+                            <select class="form-select" id="ePaymentMethod">
+                                <option value="Cash">เงินสด</option>
+                                <option value="Transfer">เงินโอน</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-danger w-100 fw-bold rounded-pill shadow-sm">บันทึกข้อมูลรายจ่าย</button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- List -->
+            <div class="col-md-8">
+                <div class="glass-card mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold m-0" id="expensesTableTitle">ประวัติรายจ่ายร้าน</h5>
+                    </div>
+                    <!-- Filter -->
+                    <div class="row align-items-end mb-3">
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label text-muted small fw-bold">ตั้งแต่วันที่</label>
+                            <input type="date" id="startDate" class="form-control rounded-pill">
+                        </div>
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label text-muted small fw-bold">ถึงวันที่</label>
+                            <input type="date" id="endDate" class="form-control rounded-pill">
+                        </div>
+                        <div class="col-md-4 d-flex gap-2">
+                            <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="fetchExpenses()">🔍 กรอง</button>
+                            <button class="btn btn-outline-secondary w-100 rounded-pill fw-bold" onclick="clearFilter()">❌ ล้าง</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mt-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>วันเวลา</th>
+                                    <th>รายการ</th>
+                                    <th>ประเภท</th>
+                                    <th>ชำระโดย</th>
+                                    <th class="text-end">จำนวนเงิน</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expenseTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                            <tfoot class="table-light fw-bold text-danger">
+                                <tr>
+                                    <td colspan="4" class="text-end">ยอดรวมทั้งหมด:</td>
+                                    <td class="text-end" id="totalExpense">0.00</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Custom Thai Date Formatter for text (DD/MM/YYYY -> 27 ก.ย. 2569) without time
+        function formatThaiDateOnly(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = d.getDate();
+            const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+            const monthStr = months[d.getMonth()];
+            const year = d.getFullYear() + 543;
+            return `${day} ${monthStr} ${year}`;
+        }
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY -> 27 ก.ย. 2569)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = d.getDate();
+            const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+            const monthStr = months[d.getMonth()];
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day} ${monthStr} ${year} ${hours}:${minutes}`;
+        }
+
+        async function fetchExpenses() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let url = '/api/expenses';
+            if (startDate && endDate) {
+                url += `?start_date=${startDate}&end_date=${endDate}`;
+                document.getElementById('expensesTableTitle').innerText = `ประวัติรายจ่าย (${formatThaiDateOnly(startDate)} ถึง ${formatThaiDateOnly(endDate)})`;
+            } else {
+                document.getElementById('expensesTableTitle').innerText = `ประวัติรายจ่ายร้านทั้งหมด`;
+            }
+
+            const res = await fetch(url);
+            const data = await res.json();
+            const tbody = document.getElementById('expenseTable');
+            tbody.innerHTML = '';
+            let total = 0;
+            
+            data.forEach(e => {
+                total += e.amount;
+                const d = formatThaiDate(e.timestamp);
+                
+                // Parse PO ID from description
+                let actionBtn = `<button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="alert('รายละเอียด:\\n' + '${e.description}')">📄 รายละเอียด</button>`;
+                const poMatch = e.description.match(/\(PO #(\d+)\)/);
+                if (poMatch) {
+                    const poId = poMatch[1];
+                    actionBtn = `<a href="/purchase-receipt/${poId}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">📄 ดูใบสั่งซื้อ</a>`;
+                }
+
+                let row = `<tr>
+                    <td><small class="text-muted">${d}</small></td>
+                    <td class="fw-bold">${e.description}</td>
+                    <td><span class="badge bg-${e.expense_type === 'OPEX' ? 'warning text-dark' : 'danger'}">${e.expense_type || 'OPEX'}</span></td>
+                    <td><span class="badge bg-secondary">${e.payment_method || 'Cash'}</span></td>
+                    <td class="text-end fw-bold text-danger">${formatMoney(e.amount)}</td>
+                    <td class="text-center">${actionBtn}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+            
+            document.getElementById('totalExpense').innerText = `${formatMoney(total)}`;
+        }
+
+        document.getElementById('addExpenseForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                description: document.getElementById('eDesc').value,
+                amount: parseFloat(document.getElementById('eAmount').value),
+                expense_type: document.getElementById('eType').value,
+                payment_method: document.getElementById('ePaymentMethod').value
+            };
+            
+            await fetch('/api/expenses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            e.target.reset();
+            fetchExpenses();
+        });
+
+        function setToday() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            const dateString = `${yyyy}-${mm}-${dd}`;
+            
+            document.getElementById('startDate').value = dateString;
+            document.getElementById('endDate').value = dateString;
+        }
+
+        function clearFilter() {
+            setToday();
+            fetchExpenses();
+        }
+
+        // Init
+        setToday();
+        fetchExpenses();
+    </script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                defaultDate: new Date(),
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
+</body>
+</html>

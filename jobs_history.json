@@ -1,0 +1,252 @@
+[
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Update jobs.html UI for direct payment",
+      "Instruction": "Update jobs.html UI for direct payment",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 64,
+          "ReplacementContent": "                                    <th>\u0e2a\u0e16\u0e32\u0e19\u0e30</th>\n                                    <th>\u0e08\u0e31\u0e14\u0e01\u0e32\u0e23</th>\n                                </tr>\n                            </thead>\n                            <tbody id=\"jobTable\">\n                                <!-- Data rendered by JS -->\n                            </tbody>\n                        </table>\n                    </div>\n                </div>\n            </div>\n        </div>\n    </div>\n\n    <!-- Payment Modal -->\n    <div class=\"modal fade\" id=\"paymentModal\" tabindex=\"-1\">\n        <div class=\"modal-dialog\">\n            <div class=\"modal-content\">\n                <div class=\"modal-header\">\n                    <h5 class=\"modal-title fw-bold\">\ud83d\udcb0 \u0e2a\u0e48\u0e07\u0e21\u0e2d\u0e1a\u0e41\u0e25\u0e30\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19</h5>\n                    <button type=\"button\" class=\"btn-close\" data-bs-dismiss=\"modal\"></button>\n                </div>\n                <div class=\"modal-body\">\n                    <input type=\"hidden\" id=\"payJobId\">\n                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e0a\u0e33\u0e23\u0e30 (\u0e1a\u0e32\u0e17)</label>\n                        <input type=\"number\" class=\"form-control form-control-lg text-primary fw-bold\" id=\"payAmount\" value=\"0\" min=\"0\">\n                    </div>\n                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14 (\u0e16\u0e49\u0e32\u0e21\u0e35)</label>\n                        <input type=\"number\" class=\"form-control\" id=\"payDiscount\" value=\"0\" min=\"0\">\n                    </div>\n                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e27\u0e34\u0e18\u0e35\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19</label>\n                        <select class=\"form-select\" id=\"payMethod\">\n                            <option value=\"Cash\">\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14 (Cash)</option>\n                            <option value=\"PromptPay\">\u0e40\u0e07\u0e34\u0e19\u0e42\u0e2d\u0e19 / \u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e40\u0e1e\u0e22\u0e4c</option>\n                        </select>\n                    </div>\n                </div>\n                <div class=\"modal-footer\">\n                    <button type=\"button\" class=\"btn btn-secondary\" data-bs-dismiss=\"modal\">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>\n                    <button type=\"button\" class=\"btn btn-primary fw-bold\" onclick=\"submitPayment()\">\u2705 \u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e23\u0e31\u0e1a\u0e40\u0e07\u0e34\u0e19</button>\n                </div>\n            </div>\n        </div>\n    </div>\n    \n    <script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js\"></script>",
+          "StartLine": 52,
+          "TargetContent": "                                    <th>\u0e2a\u0e16\u0e32\u0e19\u0e30</th>\n                                </tr>\n                            </thead>\n                            <tbody id=\"jobTable\">\n                                <!-- Data rendered by JS -->\n                            </tbody>\n                        </table>\n                    </div>\n                </div>\n            </div>\n        </div>\n    </div>"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 110,
+          "ReplacementContent": "        const statusColors = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': 'danger',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': 'warning text-dark'\n        };\n\n        const nextStatus = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': '\u0e23\u0e2d\u0e04\u0e34\u0e27'\n        };\n\n        let paymentModal;\n\n        async function fetchJobs() {\n            const res = await fetch('/api/jobs');\n            const data = await res.json();\n            const tbody = document.getElementById('jobTable');\n            tbody.innerHTML = '';\n            \n            if (data.length === 0) {\n                tbody.innerHTML = `<tr><td colspan=\"5\" class=\"text-center text-muted\">\ud83c\udf89 \u0e15\u0e2d\u0e19\u0e19\u0e35\u0e49\u0e04\u0e34\u0e27\u0e07\u0e32\u0e19\u0e27\u0e48\u0e32\u0e07\u0e41\u0e25\u0e49\u0e27!</td></tr>`;\n                return;\n            }\n\n            data.forEach(j => {\n                const color = statusColors[j.status] || 'secondary';\n                let row = `<tr>\n                    <td><small class=\"text-muted fw-bold\">#JOB-${String(j.id).padStart(4, '0')}</small></td>\n                    <td class=\"fw-bold\">${j.customer_name}</td>\n                    <td>${j.details}</td>\n                    <td>\n                        <span class=\"badge rounded-pill bg-${color} status-badge p-2 shadow-sm\" onclick=\"toggleStatus(${j.id}, '${j.status}')\" title=\"\u0e04\u0e25\u0e34\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e2a\u0e16\u0e32\u0e19\u0e30\">\n                            ${j.status === '\u0e23\u0e2d\u0e04\u0e34\u0e27' ? '\ud83d\udcdd ' : '\u23f3 '} ${j.status}\n                        </span>\n                    </td>\n                    <td>\n                        <button class=\"btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3\" onclick=\"openPayment(${j.id})\">\ud83d\udcb0 \u0e23\u0e31\u0e1a\u0e40\u0e07\u0e34\u0e19</button>\n                    </td>\n                </tr>`;\n                tbody.innerHTML += row;\n            });\n        }\n\n        async function toggleStatus(id, currentStatus) {\n            const newStatus = nextStatus[currentStatus];\n            if (!newStatus) return;\n            \n            await fetch(`/api/jobs/${id}`, {\n                method: 'PUT',\n                headers: { 'Content-Type': 'application/json' },\n                body: JSON.stringify({ status: newStatus })\n            });\n            fetchJobs();\n        }\n        \n        function openPayment(id) {\n            document.getElementById('payJobId').value = id;\n            document.getElementById('payAmount').value = '';\n            document.getElementById('payDiscount').value = '0';\n            document.getElementById('payMethod').value = 'Cash';\n            if (!paymentModal) {\n                paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));\n            }\n            paymentModal.show();\n        }\n\n        async function submitPayment() {\n            const id = document.getElementById('payJobId').value;\n            const amount = parseFloat(document.getElementById('payAmount').value) || 0;\n            const discount = parseFloat(document.getElementById('payDiscount').value) || 0;\n            const method = document.getElementById('payMethod').value;\n            \n            if (amount <= 0) {\n                alert(\"\u0e01\u0e23\u0e38\u0e13\u0e32\u0e01\u0e23\u0e2d\u0e01\u0e22\u0e2d\u0e14\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e17\u0e35\u0e48\u0e16\u0e39\u0e01\u0e15\u0e49\u0e2d\u0e07\");\n                return;\n            }\n\n            const res = await fetch(`/api/jobs/${id}/complete`, {\n                method: 'POST',\n                headers: { 'Content-Type': 'application/json' },\n                body: JSON.stringify({\n                    total_amount: amount,\n                    discount: discount,\n                    payment_method: method\n                })\n            });\n            \n            if (res.ok) {\n                paymentModal.hide();\n                fetchJobs();\n            } else {\n                alert(\"\u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14\u0e43\u0e19\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\");\n            }\n        }",
+          "StartLine": 66,
+          "TargetContent": "        const statusColors = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': 'danger',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': 'warning text-dark',\n            '\u0e40\u0e2a\u0e23\u0e47\u0e08\u0e41\u0e25\u0e49\u0e27\u0e23\u0e2d\u0e23\u0e31\u0e1a': 'success'\n        };\n\n        const nextStatus = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': '\u0e40\u0e2a\u0e23\u0e47\u0e08\u0e41\u0e25\u0e49\u0e27\u0e23\u0e2d\u0e23\u0e31\u0e1a',\n            '\u0e40\u0e2a\u0e23\u0e47\u0e08\u0e41\u0e25\u0e49\u0e27\u0e23\u0e2d\u0e23\u0e31\u0e1a': '\u0e23\u0e2d\u0e04\u0e34\u0e27'\n        };\n\n        async function fetchJobs() {\n            const res = await fetch('/api/jobs');\n            const data = await res.json();\n            const tbody = document.getElementById('jobTable');\n            tbody.innerHTML = '';\n            data.forEach(j => {\n                const color = statusColors[j.status] || 'secondary';\n                let row = `<tr>\n                    <td><small class=\"text-muted fw-bold\">#JOB-${String(j.id).padStart(4, '0')}</small></td>\n                    <td class=\"fw-bold\">${j.customer_name}</td>\n                    <td>${j.details}</td>\n                    <td>\n                        <span class=\"badge rounded-pill bg-${color} status-badge p-2\" onclick=\"toggleStatus(${j.id}, '${j.status}')\" title=\"\u0e04\u0e25\u0e34\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e2a\u0e16\u0e32\u0e19\u0e30\">\n                            ${j.status}\n                        </span>\n                    </td>\n                </tr>`;\n                tbody.innerHTML += row;\n            });\n        }\n\n        async function toggleStatus(id, currentStatus) {\n            const newStatus = nextStatus[currentStatus];\n            await fetch(`/api/jobs/${id}`, {\n                method: 'PUT',\n                headers: { 'Content-Type': 'application/json' },\n                body: JSON.stringify({ status: newStatus })\n            });\n            fetchJobs();\n        }"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Update UI for direct job payment"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Update jobs.html to add \u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32 status",
+      "Instruction": "Update jobs.html to add \u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32 status",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 111,
+          "ReplacementContent": "        const statusColors = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': 'danger',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': 'warning text-dark',\n            '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32': 'primary'\n        };\n\n        const nextStatus = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32',\n            '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32': '\u0e23\u0e2d\u0e04\u0e34\u0e27'\n        };",
+          "StartLine": 103,
+          "TargetContent": "        const statusColors = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': 'danger',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': 'warning text-dark'\n        };\n\n        const nextStatus = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': '\u0e23\u0e2d\u0e04\u0e34\u0e27'\n        };"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 135,
+          "ReplacementContent": "                        <span class=\"badge rounded-pill bg-${color} status-badge p-2 shadow-sm\" onclick=\"toggleStatus(${j.id}, '${j.status}')\" title=\"\u0e04\u0e25\u0e34\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e2a\u0e16\u0e32\u0e19\u0e30\">\n                            ${j.status === '\u0e23\u0e2d\u0e04\u0e34\u0e27' ? '\ud83d\udcdd ' : (j.status === '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32' ? '\ud83d\udce6 ' : '\u23f3 ')} ${j.status}\n                        </span>",
+          "StartLine": 133,
+          "TargetContent": "                        <span class=\"badge rounded-pill bg-${color} status-badge p-2 shadow-sm\" onclick=\"toggleStatus(${j.id}, '${j.status}')\" title=\"\u0e04\u0e25\u0e34\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e2a\u0e16\u0e32\u0e19\u0e30\">\n                            ${j.status === '\u0e23\u0e2d\u0e04\u0e34\u0e27' ? '\ud83d\udcdd ' : '\u23f3 '} ${j.status}\n                        </span>"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Add \u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32 to jobs.html"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Update jobs.html to only use \u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32 status",
+      "Instruction": "Update jobs.html to only use \u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32 status",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 112,
+          "ReplacementContent": "        let paymentModal;",
+          "StartLine": 103,
+          "TargetContent": "        const statusColors = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': 'danger',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': 'warning text-dark',\n            '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32': 'primary'\n        };\n\n        const nextStatus = {\n            '\u0e23\u0e2d\u0e04\u0e34\u0e27': '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33',\n            '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33': '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32',\n            '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32': '\u0e23\u0e2d\u0e04\u0e34\u0e27'\n        };\n\n        let paymentModal;"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 137,
+          "ReplacementContent": "            data.forEach(j => {\n                let row = `<tr>\n                    <td><small class=\"text-muted fw-bold\">#JOB-${String(j.id).padStart(4, '0')}</small></td>\n                    <td class=\"fw-bold\">${j.customer_name}</td>\n                    <td>${j.details}</td>\n                    <td>\n                        <span class=\"badge rounded-pill bg-primary p-2 shadow-sm\">\n                            \ud83d\udce6 ${j.status}\n                        </span>\n                    </td>\n                    <td>\n                        <button class=\"btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3\" onclick=\"openPayment(${j.id})\">\ud83d\udcb0 \u0e23\u0e31\u0e1a\u0e40\u0e07\u0e34\u0e19</button>\n                    </td>\n                </tr>`;\n                tbody.innerHTML += row;\n            });",
+          "StartLine": 126,
+          "TargetContent": "            data.forEach(j => {\n                const color = statusColors[j.status] || 'secondary';\n                let row = `<tr>\n                    <td><small class=\"text-muted fw-bold\">#JOB-${String(j.id).padStart(4, '0')}</small></td>\n                    <td class=\"fw-bold\">${j.customer_name}</td>\n                    <td>${j.details}</td>\n                    <td>\n                        <span class=\"badge rounded-pill bg-${color} status-badge p-2 shadow-sm\" onclick=\"toggleStatus(${j.id}, '${j.status}')\" title=\"\u0e04\u0e25\u0e34\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e2a\u0e16\u0e32\u0e19\u0e30\">\n                            ${j.status === '\u0e23\u0e2d\u0e04\u0e34\u0e27' ? '\ud83d\udcdd ' : (j.status === '\u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32' ? '\ud83d\udce6 ' : '\u23f3 ')} ${j.status}\n                        </span>\n                    </td>\n                    <td>\n                        <button class=\"btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3\" onclick=\"openPayment(${j.id})\">\ud83d\udcb0 \u0e23\u0e31\u0e1a\u0e40\u0e07\u0e34\u0e19</button>\n                    </td>\n                </tr>`;\n                tbody.innerHTML += row;\n            });"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 155,
+          "ReplacementContent": "",
+          "StartLine": 145,
+          "TargetContent": "        async function toggleStatus(id, currentStatus) {\n            const newStatus = nextStatus[currentStatus];\n            if (!newStatus) return;\n            \n            await fetch(`/api/jobs/${id}`, {\n                method: 'PUT',\n                headers: { 'Content-Type': 'application/json' },\n                body: JSON.stringify({ status: newStatus })\n            });\n            fetchJobs();\n        }"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Simplify jobs.html to only \u0e23\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Update jobs.html to add cancel and mini-cart for stock deduction",
+      "Instruction": "Update jobs.html to add cancel and mini-cart for stock deduction",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 79,
+          "ReplacementContent": "                <div class=\"modal-body\">\n                    <input type=\"hidden\" id=\"payJobId\">\n                    \n                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e23\u0e30\u0e1a\u0e38\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e17\u0e35\u0e48\u0e08\u0e30\u0e15\u0e31\u0e14\u0e2a\u0e15\u0e4a\u0e2d\u0e01 (\u0e17\u0e32\u0e07\u0e40\u0e25\u0e37\u0e2d\u0e01)</label>\n                        <form id=\"searchProductForm\" class=\"d-flex mb-2\">\n                            <input type=\"text\" class=\"form-control\" id=\"productSearchInput\" placeholder=\"\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14 \u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e0a\u0e37\u0e48\u0e2d...\" autocomplete=\"off\">\n                            <button type=\"submit\" class=\"btn btn-secondary ms-2 rounded-pill px-3\">\u0e40\u0e1e\u0e34\u0e48\u0e21</button>\n                        </form>\n                        <ul id=\"miniCartList\" class=\"list-group mb-2\" style=\"max-height: 150px; overflow-y: auto;\">\n                            <!-- items -->\n                        </ul>\n                    </div>\n                    <hr>\n                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e0a\u0e33\u0e23\u0e30 (\u0e1a\u0e32\u0e17)</label>\n                        <input type=\"number\" class=\"form-control form-control-lg text-primary fw-bold\" id=\"payAmount\" value=\"0\" min=\"0\">\n                    </div>",
+          "StartLine": 74,
+          "TargetContent": "                <div class=\"modal-body\">\n                    <input type=\"hidden\" id=\"payJobId\">\n                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e0a\u0e33\u0e23\u0e30 (\u0e1a\u0e32\u0e17)</label>\n                        <input type=\"number\" class=\"form-control form-control-lg text-primary fw-bold\" id=\"payAmount\" value=\"0\" min=\"0\">\n                    </div>"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 141,
+          "ReplacementContent": "                    <td>\n                        <button class=\"btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3 mb-1\" onclick=\"openPayment(${j.id})\">\ud83d\udcb0 \u0e23\u0e31\u0e1a\u0e40\u0e07\u0e34\u0e19</button>\n                        <button class=\"btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-bold px-3\" onclick=\"cancelJob(${j.id})\">\u274c \u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>\n                    </td>\n                </tr>`;\n                tbody.innerHTML += row;\n            });\n        }\n        \n        async function cancelJob(id) {\n            if(confirm(\"\u0e41\u0e19\u0e48\u0e43\u0e08\u0e2b\u0e23\u0e37\u0e2d\u0e44\u0e21\u0e48\u0e27\u0e48\u0e32\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e04\u0e34\u0e27\u0e07\u0e32\u0e19\u0e19\u0e35\u0e49?\")) {\n                await fetch(`/api/jobs/${id}/cancel`, { method: 'POST' });\n                fetchJobs();\n            }\n        }",
+          "StartLine": 137,
+          "TargetContent": "                    <td>\n                        <button class=\"btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3\" onclick=\"openPayment(${j.id})\">\ud83d\udcb0 \u0e23\u0e31\u0e1a\u0e40\u0e07\u0e34\u0e19</button>\n                    </td>\n                </tr>`;\n                tbody.innerHTML += row;\n            });\n        }"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 194,
+          "ReplacementContent": "        let miniCart = [];\n\n        function renderMiniCart() {\n            const list = document.getElementById('miniCartList');\n            list.innerHTML = '';\n            let total = 0;\n            miniCart.forEach((item, index) => {\n                total += (item.price * item.qty);\n                list.innerHTML += `\n                    <li class=\"list-group-item d-flex justify-content-between align-items-center\">\n                        <div style=\"flex:1;\">\n                            <small class=\"fw-bold\">${item.name}</small>\n                        </div>\n                        <div class=\"d-flex align-items-center\">\n                            <input type=\"number\" class=\"form-control form-control-sm text-center mx-2\" style=\"width: 60px;\" value=\"${item.qty}\" min=\"1\" onchange=\"updateMiniCartQty(${index}, this.value)\">\n                            <button class=\"btn btn-sm btn-outline-danger border-0\" onclick=\"removeMiniCartItem(${index})\">\ud83d\uddd1</button>\n                        </div>\n                    </li>\n                `;\n            });\n            if(miniCart.length > 0) {\n                document.getElementById('payAmount').value = total;\n            }\n        }\n\n        function updateMiniCartQty(index, qty) {\n            miniCart[index].qty = parseInt(qty) || 1;\n            renderMiniCart();\n        }\n\n        function removeMiniCartItem(index) {\n            miniCart.splice(index, 1);\n            renderMiniCart();\n        }\n\n        document.getElementById('searchProductForm').addEventListener('submit', async (e) => {\n            e.preventDefault();\n            const input = document.getElementById('productSearchInput');\n            const query = input.value.trim();\n            if (!query) return;\n\n            const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);\n            const products = await res.json();\n            \n            if (products.length > 0) {\n                const p = products[0];\n                const existing = miniCart.find(i => i.id === p.id);\n                if (existing) {\n                    existing.qty += 1;\n                } else {\n                    miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1 });\n                }\n                renderMiniCart();\n                input.value = '';\n            } else {\n                alert('\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32!');\n            }\n        });\n\n        function openPayment(id) {\n            document.getElementById('payJobId').value = id;\n            document.getElementById('payAmount').value = '';\n            document.getElementById('payDiscount').value = '0';\n            document.getElementById('payMethod').value = 'Cash';\n            miniCart = [];\n            renderMiniCart();\n            \n            if (!paymentModal) {\n                paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));\n            }\n            paymentModal.show();\n            \n            // Focus search input after modal is shown\n            document.getElementById('paymentModal').addEventListener('shown.bs.modal', function () {\n                document.getElementById('productSearchInput').focus();\n            }, { once: true });\n        }\n\n        async function submitPayment() {\n            const id = document.getElementById('payJobId').value;\n            const amount = parseFloat(document.getElementById('payAmount').value) || 0;\n            const discount = parseFloat(document.getElementById('payDiscount').value) || 0;\n            const method = document.getElementById('payMethod').value;\n            \n            if (amount <= 0 && miniCart.length === 0) {\n                alert(\"\u0e01\u0e23\u0e38\u0e13\u0e32\u0e01\u0e23\u0e2d\u0e01\u0e22\u0e2d\u0e14\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e17\u0e35\u0e48\u0e16\u0e39\u0e01\u0e15\u0e49\u0e2d\u0e07\");\n                return;\n            }\n\n            const res = await fetch(`/api/jobs/${id}/complete`, {\n                method: 'POST',\n                headers: { 'Content-Type': 'application/json' },\n                body: JSON.stringify({\n                    total_amount: amount,\n                    discount: discount,\n                    payment_method: method,\n                    items: miniCart\n                })\n            });\n            \n            if (res.ok) {\n                paymentModal.hide();\n                fetchJobs();\n            } else {\n                alert(\"\u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14\u0e43\u0e19\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\");\n            }\n        }",
+          "StartLine": 144,
+          "TargetContent": "        function openPayment(id) {\n            document.getElementById('payJobId').value = id;\n            document.getElementById('payAmount').value = '';\n            document.getElementById('payDiscount').value = '0';\n            document.getElementById('payMethod').value = 'Cash';\n            if (!paymentModal) {\n                paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));\n            }\n            paymentModal.show();\n        }\n\n        async function submitPayment() {\n            const id = document.getElementById('payJobId').value;\n            const amount = parseFloat(document.getElementById('payAmount').value) || 0;\n            const discount = parseFloat(document.getElementById('payDiscount').value) || 0;\n            const method = document.getElementById('payMethod').value;\n            \n            if (amount <= 0) {\n                alert(\"\u0e01\u0e23\u0e38\u0e13\u0e32\u0e01\u0e23\u0e2d\u0e01\u0e22\u0e2d\u0e14\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e17\u0e35\u0e48\u0e16\u0e39\u0e01\u0e15\u0e49\u0e2d\u0e07\");\n                return;\n            }\n\n            const res = await fetch(`/api/jobs/${id}/complete`, {\n                method: 'POST',\n                headers: { 'Content-Type': 'application/json' },\n                body: JSON.stringify({\n                    total_amount: amount,\n                    discount: discount,\n                    payment_method: method\n                })\n            });\n            \n            if (res.ok) {\n                paymentModal.hide();\n                fetchJobs();\n            } else {\n                alert(\"\u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14\u0e43\u0e19\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\");\n            }\n        }"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Update jobs.html payment modal and cancel"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Add autocomplete dropdown to product search in jobs.html",
+      "Instruction": "Add autocomplete dropdown to product search in jobs.html",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 79,
+          "ReplacementContent": "                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e23\u0e30\u0e1a\u0e38\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e17\u0e35\u0e48\u0e08\u0e30\u0e15\u0e31\u0e14\u0e2a\u0e15\u0e4a\u0e2d\u0e01 (\u0e17\u0e32\u0e07\u0e40\u0e25\u0e37\u0e2d\u0e01)</label>\n                        <form id=\"searchProductForm\" class=\"d-flex mb-2 position-relative\">\n                            <input type=\"text\" class=\"form-control\" id=\"productSearchInput\" placeholder=\"\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14 \u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e0a\u0e37\u0e48\u0e2d...\" autocomplete=\"off\">\n                            <button type=\"submit\" class=\"btn btn-secondary ms-2 rounded-pill px-3\">\u0e40\u0e1e\u0e34\u0e48\u0e21</button>\n                            <!-- Autocomplete Dropdown -->\n                            <div id=\"productSuggestions\" class=\"list-group position-absolute w-100 shadow-sm d-none\" style=\"top: 100%; left: 0; z-index: 1050; max-height: 200px; overflow-y: auto;\">\n                            </div>\n                        </form>\n                        <ul id=\"miniCartList\" class=\"list-group mb-2\" style=\"max-height: 150px; overflow-y: auto;\">\n                            <!-- items -->\n                        </ul>\n                    </div>",
+          "StartLine": 74,
+          "TargetContent": "                    <div class=\"mb-3\">\n                        <label class=\"form-label fw-bold\">\u0e23\u0e30\u0e1a\u0e38\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e17\u0e35\u0e48\u0e08\u0e30\u0e15\u0e31\u0e14\u0e2a\u0e15\u0e4a\u0e2d\u0e01 (\u0e17\u0e32\u0e07\u0e40\u0e25\u0e37\u0e2d\u0e01)</label>\n                        <form id=\"searchProductForm\" class=\"d-flex mb-2\">\n                            <input type=\"text\" class=\"form-control\" id=\"productSearchInput\" placeholder=\"\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14 \u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e0a\u0e37\u0e48\u0e2d...\" autocomplete=\"off\">\n                            <button type=\"submit\" class=\"btn btn-secondary ms-2 rounded-pill px-3\">\u0e40\u0e1e\u0e34\u0e48\u0e21</button>\n                        </form>\n                        <ul id=\"miniCartList\" class=\"list-group mb-2\" style=\"max-height: 150px; overflow-y: auto;\">\n                            <!-- items -->\n                        </ul>\n                    </div>"
+        },
+        {
+          "AllowMultiple": false,
+          "EndLine": 208,
+          "ReplacementContent": "        document.getElementById('searchProductForm').addEventListener('submit', async (e) => {\n            e.preventDefault();\n            const input = document.getElementById('productSearchInput');\n            const query = input.value.trim();\n            if (!query) return;\n\n            const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);\n            const products = await res.json();\n            \n            if (products.length > 0) {\n                // If form is submitted (e.g. by pressing Enter via scanner), just take the first match\n                addProductToMiniCart(products[0]);\n                input.value = '';\n                document.getElementById('productSuggestions').classList.add('d-none');\n            } else {\n                alert('\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32!');\n            }\n        });\n\n        function addProductToMiniCart(p) {\n            const existing = miniCart.find(i => i.id === p.id);\n            if (existing) {\n                existing.qty += 1;\n            } else {\n                miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1 });\n            }\n            renderMiniCart();\n        }\n\n        // Autocomplete functionality\n        let searchTimeout = null;\n        document.getElementById('productSearchInput').addEventListener('input', (e) => {\n            clearTimeout(searchTimeout);\n            const query = e.target.value.trim();\n            const suggestionsBox = document.getElementById('productSuggestions');\n            \n            if (!query) {\n                suggestionsBox.classList.add('d-none');\n                return;\n            }\n\n            searchTimeout = setTimeout(async () => {\n                const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);\n                const products = await res.json();\n                \n                suggestionsBox.innerHTML = '';\n                if (products.length > 0) {\n                    products.forEach(p => {\n                        const item = document.createElement('button');\n                        item.type = 'button';\n                        item.className = 'list-group-item list-group-item-action text-start';\n                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-2\">(${p.stock_qty} \u0e0a\u0e34\u0e49\u0e19)</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;\n                        item.onclick = () => {\n                            addProductToMiniCart(p);\n                            document.getElementById('productSearchInput').value = '';\n                            suggestionsBox.classList.add('d-none');\n                            document.getElementById('productSearchInput').focus();\n                        };\n                        suggestionsBox.appendChild(item);\n                    });\n                    suggestionsBox.classList.remove('d-none');\n                } else {\n                    suggestionsBox.innerHTML = '<div class=\"list-group-item text-muted text-center\">\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32</div>';\n                    suggestionsBox.classList.remove('d-none');\n                }\n            }, 300); // 300ms debounce\n        });\n        \n        // Hide autocomplete when clicking outside\n        document.addEventListener('click', (e) => {\n            if (!e.target.closest('#searchProductForm')) {\n                document.getElementById('productSuggestions').classList.add('d-none');\n            }\n        });",
+          "StartLine": 186,
+          "TargetContent": "        document.getElementById('searchProductForm').addEventListener('submit', async (e) => {\n            e.preventDefault();\n            const input = document.getElementById('productSearchInput');\n            const query = input.value.trim();\n            if (!query) return;\n\n            const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);\n            const products = await res.json();\n            \n            if (products.length > 0) {\n                const p = products[0];\n                const existing = miniCart.find(i => i.id === p.id);\n                if (existing) {\n                    existing.qty += 1;\n                } else {\n                    miniCart.push({ id: p.id, name: p.name, price: p.price, qty: 1 });\n                }\n                renderMiniCart();\n                input.value = '';\n            } else {\n                alert('\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32!');\n            }\n        });"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Add autocomplete search in jobs payment modal"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Update jobs.html autocomplete UI to show barcode",
+      "Instruction": "Update jobs.html autocomplete UI to show barcode",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 244,
+          "ReplacementContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-1\">[${p.barcode || '\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14'}]</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;",
+          "StartLine": 242,
+          "TargetContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-2\">(${p.stock_qty} \u0e0a\u0e34\u0e49\u0e19)</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Update jobs.html autocomplete to show barcode"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Re-apply jobs.html autocomplete UI to show barcode",
+      "Instruction": "Re-apply jobs.html autocomplete UI to show barcode",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 244,
+          "ReplacementContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-1\">[${p.barcode || '\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14'}]</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;",
+          "StartLine": 242,
+          "TargetContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-2\">(${p.stock_qty} \u0e0a\u0e34\u0e49\u0e19)</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Restore jobs.html barcode"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Restore barcode autocomplete to jobs.html",
+      "Instruction": "Restore barcode autocomplete to jobs.html",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 244,
+          "ReplacementContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-1\">[${p.barcode || '\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14'}]</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;",
+          "StartLine": 242,
+          "TargetContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-2\">(${p.stock_qty} \u0e0a\u0e34\u0e49\u0e19)</small> <span class=\"float-end text-success\">\u0e3f${p.price.toFixed(2)}</span>`;"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Restore barcode in jobs"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Restore barcode autocomplete to jobs.html",
+      "Instruction": "Restore barcode autocomplete to jobs.html",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 244,
+          "ReplacementContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-1\">[${p.barcode || '\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14'}]</small> <span class=\"float-end text-success\">${formatMoney(p.price)}</span>`;",
+          "StartLine": 242,
+          "TargetContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-2\">(${p.stock_qty} \u0e0a\u0e34\u0e49\u0e19)</small> <span class=\"float-end text-success\">${formatMoney(p.price)}</span>`;"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Restore jobs.html barcode"
+    }
+  },
+  {
+    "name": "multi_replace_file_content",
+    "args": {
+      "Description": "Restore barcode to jobs.html",
+      "Instruction": "Restore barcode to jobs.html",
+      "ReplacementChunks": [
+        {
+          "AllowMultiple": false,
+          "EndLine": 244,
+          "ReplacementContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-1\">[${p.barcode || '\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14'}]</small> <span class=\"float-end text-success\">${formatMoney(p.price)}</span>`;",
+          "StartLine": 242,
+          "TargetContent": "                        item.innerHTML = `<strong>${p.name}</strong> <small class=\"text-muted ms-2\">(${p.stock_qty} \u0e0a\u0e34\u0e49\u0e19)</small> <span class=\"float-end text-success\">${formatMoney(p.price)}</span>`;"
+        }
+      ],
+      "TargetFile": "d:\\xerox\\templates\\jobs.html",
+      "toolAction": "Editing file",
+      "toolSummary": "Restore jobs barcode UI"
+    }
+  },
+  {
+    "name": "write_to_file",
+    "args": {
+      "CodeContent": "import json\nout = []\nwith open(r'C:\\Users\\NB34\\.gemini\\antigravity-ide\\brain\\92d42e92-1965-4bf6-b7aa-c5207d5b4272\\.system_generated\\logs\\transcript_full.jsonl', 'r', encoding='utf-8') as f:\n    for line in f:\n        try:\n            j = json.loads(line)\n            if 'tool_calls' in j:\n                for tc in j['tool_calls']:\n                    if tc.get('name') == 'write_to_file' and 'jobs.html' in str(tc):\n                        out.append(tc)\n                    elif tc.get('name') == 'multi_replace_file_content' and 'jobs.html' in str(tc):\n                        out.append(tc)\n        except: pass\n\nwith open(r'd:\\xerox\\jobs_history.json', 'w', encoding='utf-8') as f:\n    json.dump(out, f, indent=2)\n",
+      "Description": "Extract jobs.html history",
+      "Overwrite": true,
+      "TargetFile": "d:\\xerox\\extract_jobs.py",
+      "toolAction": "Editing file",
+      "toolSummary": "Create extract_jobs.py"
+    }
+  }
+]

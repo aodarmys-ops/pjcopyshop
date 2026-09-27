@@ -1,4 +1,4 @@
-# ระบบจัดการร้านถ่ายเอกสาร (Xerox Management System)
+# ระบบจัดการร้าน PJ Copy (PJ Copy Management System)
 
 ## การสำรองข้อมูลขึ้น Google Drive (Google Drive Backup)
 

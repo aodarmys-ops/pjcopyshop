@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card {
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 20px;
+        }
+    </style>
+
+    <!-- Global UI Additions -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <style>
+        .font-sizer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 5px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f8f9fa;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .font-sizer button:hover { background: #e9ecef; }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-dark">📦 Inventory Management</h2>
+            <div>
+                <a href="/stock-checking" class="btn btn-success rounded-pill me-2 fw-bold">✔️ บันทึกผลตรวจนับสต๊อก</a>
+                <a href="/stock-count" class="btn btn-info rounded-pill me-2 fw-bold text-dark" target="_blank">📝 พิมพ์ใบตรวจนับสต๊อก</a>
+                <button type="button" class="btn btn-warning rounded-pill me-2 shadow-sm fw-bold" onclick="showWriteoffHistory()">📜 ประวัติตัดชำรุด</button>
+                <a href="/print-barcodes" class="btn btn-primary rounded-pill me-2">🖨️ พิมพ์บาร์โค้ด</a>
+                <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <div class="glass-card mb-4">
+                    <h5 class="fw-bold mb-3" id="formTitle">เพิ่มสินค้า / บริการใหม่</h5>
+                    <form id="addProductForm">
+                        <input type="hidden" id="pId">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ชื่อสินค้า</label>
+                            <input type="text" class="form-control" id="pName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ประเภท</label>
+                            <select class="form-select" id="pType">
+                                <option value="Service">งานบริการ</option>
+                                <option value="Stationery">เครื่องเขียน</option>
+                                <option value="Gift shop">กิ๊ฟช๊อป</option>
+                                <option value="Dolls">ตุ๊กตา</option>
+                                <option value="Toys">ของเล่น</option>
+                                <option value="Perfume">น้ำหอม</option>
+                                <option value="IT equipment">อุปกรณ์ IT</option>
+                                <option value="Brewed Drink">เครื่องดื่มชง</option>
+                                <option value="Water">น้ำเปล่า</option>
+                                <option value="Soft drinks">น้ำอัดลม</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-4 mb-3">
+                                <label class="form-label text-muted small fw-bold">ยี่ห้อ</label>
+                                <input type="text" class="form-control" id="pBrand" placeholder="-">
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label class="form-label text-muted small fw-bold">รุ่น</label>
+                                <input type="text" class="form-control" id="pModel" placeholder="-">
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label class="form-label text-muted small fw-bold">สี</label>
+                                <input type="text" class="form-control" id="pColor" placeholder="-">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">บาร์โค้ด (เว้นว่างไว้หากต้องการให้ระบบสร้างให้)</label>
+                            <input type="text" class="form-control" id="pBarcode">
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label text-muted small fw-bold">ต้นทุน</label>
+                                <input type="number" step="0.01" min="0" class="form-control" id="pCost">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label text-muted small fw-bold">ราคาขาย</label>
+                                <input type="number" step="0.01" min="0.25" class="form-control" id="pPrice" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label text-muted small fw-bold">จำนวนสต๊อก</label>
+                                <input type="number" class="form-control" id="pStock" value="0">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label text-muted small fw-bold">จุดสั่งซื้อ (Reorder)</label>
+                                <input type="number" class="form-control" id="pReorder" value="5">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 mt-2 fw-bold rounded-pill" id="formSubmitBtn">บันทึกข้อมูล</button>
+                        <button type="button" class="btn btn-secondary w-100 mt-2 fw-bold rounded-pill d-none" id="formCancelBtn" onclick="cancelEdit()">ยกเลิกการแก้ไข</button>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="col-md-8">
+                <div class="glass-card">
+                    <h5 class="fw-bold mb-3">รายการสินค้าในระบบ</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mt-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>รหัส/บาร์โค้ด</th>
+                                    <th>ชื่อสินค้า</th>
+                                    <th>ยี่ห้อ/รุ่น/สี</th>
+                                    <th>ประเภท</th>
+                                    <th>ราคาขาย</th>
+                                    <th>คงเหลือ</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productTable">
+                                <!-- Data rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchProducts() {
+            const res = await fetch('/api/products');
+            const data = await res.json();
+            const tbody = document.getElementById('productTable');
+            tbody.innerHTML = '';
+            data.forEach(p => {
+                let row = `<tr>
+                    <td><small class="text-muted">${p.barcode || p.id}</small></td>
+                    <td class="fw-bold">${p.name}</td>
+                    <td><small class="text-muted">${p.brand || '-'} / ${p.model || '-'} / ${p.color || '-'}</small></td>
+                    <td><span class="badge rounded-pill bg-${p.type==='Retail'?'primary':(p.type==='Brewed Drink'?'warning text-dark':'secondary')}">${p.type}</span></td>
+                    <td>
+                        <span class="text-muted small">ทุน: ${formatMoney(p.cost)}</span><br>
+                        ${formatMoney(p.price)}
+                    </td>
+                    <td>
+                        <span class="${p.stock_qty <= p.reorder_level && p.type === 'Retail' ? 'text-danger fw-bold' : 'text-success fw-bold'}">
+                            ${p.type === 'Service' ? '-' : p.stock_qty + ' ชิ้น'}
+                        </span>
+                    </td>
+                    <td class="text-center text-nowrap">
+                        <button class="btn btn-sm btn-outline-primary rounded-circle mb-1" title="แก้ไขข้อมูล" onclick="editProduct('${encodeURIComponent(JSON.stringify(p))}')">✏️</button>
+                        ${(p.type === 'Retail' || p.type === 'Brewed Drink') ? `<button class="btn btn-sm btn-success rounded-circle mb-1" title="เพิ่มสต๊อก" onclick="addStock(${p.id}, '${p.name}')">➕</button>` : ''}
+                        ${(p.type !== 'Service') ? `<button class="btn btn-sm btn-outline-warning rounded-circle mb-1" title="ตัดชำรุด/เสียหาย" onclick="openWriteoffModal(${p.id}, '${p.name}', ${p.stock_qty})">✂️</button>` : ''}
+                        <button class="btn btn-sm btn-outline-danger rounded-circle mb-1" title="ลบสินค้า" onclick="deleteProduct(${p.id}, '${p.name}')">🗑️</button>
+                    </td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        async function addStock(id, name) {
+            let qty = prompt(`เพิ่มสต๊อกสำหรับ "${name}"\nจำนวนที่ต้องการรับเข้า:`, "10");
+            if(qty === null || qty === "") return;
+            qty = parseInt(qty);
+            if(isNaN(qty) || qty <= 0) return alert("กรุณาใส่ตัวเลขที่ถูกต้อง");
+
+            await fetch(`/api/products/${id}/stock`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ add_qty: qty })
+            });
+            fetchProducts();
+        }
+
+        async function deleteProduct(id, name) {
+            if(confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบสินค้า "${name}" ออกจากระบบ? (การลบจะเป็นการซ่อนไม่ให้ใช้งานได้อีก)`)) {
+                await fetch(`/api/products/${id}`, { method: 'DELETE' });
+                fetchProducts();
+            }
+        }
+
+        function editProduct(pStr) {
+            const p = JSON.parse(decodeURIComponent(pStr));
+            document.getElementById('pId').value = p.id;
+            document.getElementById('pName').value = p.name;
+            document.getElementById('pType').value = p.type;
+            document.getElementById('pBrand').value = p.brand;
+            document.getElementById('pModel').value = p.model;
+            document.getElementById('pColor').value = p.color;
+            document.getElementById('pBarcode').value = p.barcode || '';
+            document.getElementById('pCost').value = p.cost;
+            document.getElementById('pPrice').value = p.price;
+            document.getElementById('pStock').value = p.stock_qty;
+            document.getElementById('pReorder').value = p.reorder_level;
+            
+            document.getElementById('formTitle').innerText = '✏️ แก้ไขข้อมูลสินค้า';
+            document.getElementById('formSubmitBtn').innerText = 'อัปเดตข้อมูล';
+            document.getElementById('formSubmitBtn').classList.replace('btn-primary', 'btn-warning');
+            document.getElementById('formCancelBtn').classList.remove('d-none');
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            document.getElementById('addProductForm').reset();
+            document.getElementById('pId').value = '';
+            document.getElementById('formTitle').innerText = 'เพิ่มสินค้า / บริการใหม่';
+            document.getElementById('formSubmitBtn').innerText = 'บันทึกข้อมูล';
+            document.getElementById('formSubmitBtn').classList.replace('btn-warning', 'btn-primary');
+            document.getElementById('formCancelBtn').classList.add('d-none');
+        }
+
+        document.getElementById('addProductForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('pId').value;
+            const payload = {
+                name: document.getElementById('pName').value,
+                type: document.getElementById('pType').value,
+                brand: document.getElementById('pBrand').value,
+                model: document.getElementById('pModel').value,
+                color: document.getElementById('pColor').value,
+                barcode: document.getElementById('pBarcode').value,
+                cost: parseFloat(document.getElementById('pCost').value) || 0,
+                price: parseFloat(document.getElementById('pPrice').value),
+                stock_qty: parseInt(document.getElementById('pStock').value),
+                reorder_level: parseInt(document.getElementById('pReorder').value)
+            };
+            
+            if (id) {
+                // Update existing
+                await fetch(`/api/products/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                cancelEdit();
+            } else {
+                // Add new
+                await fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                e.target.reset();
+            }
+            
+            fetchProducts();
+        });
+
+        // Init
+        fetchProducts();
+    
+        // WriteOff Functions
+        let writeoffModal = null;
+        let writeoffHistoryModal = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            writeoffModal = new bootstrap.Modal(document.getElementById('writeoffModal'));
+            writeoffHistoryModal = new bootstrap.Modal(document.getElementById('writeoffHistoryModal'));
+        });
+
+        function openWriteoffModal(id, name, stock) {
+            document.getElementById('woProductId').value = id;
+            document.getElementById('woProductName').innerText = name;
+            document.getElementById('woCurrentStock').innerText = stock;
+            document.getElementById('woQty').value = 1;
+            document.getElementById('woQty').max = stock;
+            writeoffModal.show();
+        }
+
+        async function submitWriteoff() {
+            const id = document.getElementById('woProductId').value;
+            const qty = parseInt(document.getElementById('woQty').value);
+            const reason = document.getElementById('woReason').value;
+            const max = parseInt(document.getElementById('woCurrentStock').innerText);
+
+            if (isNaN(qty) || qty <= 0 || qty > max) {
+                alert('กรุณากรอกจำนวนให้ถูกต้องและไม่เกินสต๊อกที่มีอยู่');
+                return;
+            }
+
+            if(confirm(`คุณแน่ใจหรือไม่ว่าต้องการตัดสต๊อก ${qty} ชิ้น ด้วยสาเหตุ "${reason}"?`)) {
+                const res = await fetch('/api/inventory/writeoff', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: id, qty: qty, reason: reason })
+                });
+
+                if(res.ok) {
+                    alert('ตัดสต๊อกสำเร็จ!');
+                    writeoffModal.hide();
+                    fetchProducts();
+                } else {
+                    alert('เกิดข้อผิดพลาดในการตัดสต๊อก');
+                }
+            }
+        }
+
+        function clearWriteoffFilter() {
+            document.getElementById('woStartDate').value = '';
+            document.getElementById('woEndDate').value = '';
+            showWriteoffHistory();
+        }
+
+        async function showWriteoffHistory() {
+            const startDate = document.getElementById('woStartDate') ? document.getElementById('woStartDate').value : '';
+            const endDate = document.getElementById('woEndDate') ? document.getElementById('woEndDate').value : '';
+            
+            let url = '/api/inventory/writeoff';
+            if (startDate && endDate) {
+                url += `?start_date=${startDate}&end_date=${endDate}`;
+            }
+
+            const res = await fetch(url);
+            const data = await res.json();
+            const tbody = document.getElementById('woHistoryTable');
+            tbody.innerHTML = '';
+            
+            if(data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">ยังไม่มีประวัติ</td></tr>';
+            } else {
+                data.forEach(item => {
+                    // Use global formatThaiDate if available (added by patch4.py)
+                    const d = typeof formatThaiDate === 'function' ? formatThaiDate(item.timestamp) : formatThaiDate(item.timestamp);
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><small class="text-muted">${d}</small></td>
+                            <td class="fw-bold">${item.name} <br><small class="text-muted">${item.barcode || ''}</small></td>
+                            <td class="text-danger fw-bold">-${item.qty}</td>
+                            <td><span class="badge bg-secondary">${item.reason}</span></td>
+                        </tr>
+                    `;
+                });
+            }
+            writeoffHistoryModal.show();
+        }
+
+</script>
+
+    <!-- Global UI Scripts -->
+    <div class="font-sizer">
+        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
+        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
+        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
+    </div>
+    <script>
+        // Font Size Logic
+        const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];
+        let currentSizeIdx = parseInt(localStorage.getItem('fontSizeIdx')) || 1;
+        
+        function applyFontSize() {
+            document.documentElement.style.fontSize = sizes[currentSizeIdx];
+        }
+        
+        function changeFontSize(step) {
+            if (step === 0) {
+                currentSizeIdx = 1;
+            } else {
+                currentSizeIdx += step;
+                if (currentSizeIdx < 0) currentSizeIdx = 0;
+                if (currentSizeIdx >= sizes.length) currentSizeIdx = sizes.length - 1;
+            }
+            localStorage.setItem('fontSizeIdx', currentSizeIdx);
+            applyFontSize();
+        }
+        
+        applyFontSize();
+
+        // Custom Thai Date Formatter for text (DD/MM/YYYY)
+        function formatThaiDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d)) return dateString;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear() + 543;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Flatpickr (Thai Calendar + Buddhist Era Header)
+        document.addEventListener('DOMContentLoaded', function() {
+            const thaiFormatter = function(date, format, locale) {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                if (format === "Y-m-d") {
+                    return `${date.getFullYear()}-${m}-${d}`;
+                }
+                const y = date.getFullYear() + 543;
+                return `${d}/${m}/${y}`;
+            };
+            
+            function updateYearToBE(instance) {
+                if (instance.yearElements && instance.yearElements.length > 0) {
+                    const yearInput = instance.yearElements[0];
+                    const currentVal = parseInt(yearInput.value);
+                    if (currentVal < 2500) { // If it's CE, change to BE
+                        yearInput.value = currentVal + 543;
+                    }
+                }
+                if (instance.currentYearElement) {
+                    const currentVal = parseInt(instance.currentYearElement.value);
+                    if (currentVal < 2500) {
+                        instance.currentYearElement.value = currentVal + 543;
+                    }
+                }
+            }
+
+            flatpickr("input[type=date]", {
+                locale: "th",
+                dateFormat: "Y-m-d", 
+                altInput: true,
+                altFormat: "d/m/Y", 
+                formatDate: thaiFormatter,
+                onReady: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onOpen: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onYearChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onMonthChange: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onPreCalendarPosition: function(selectedDates, dateStr, instance) { updateYearToBE(instance); },
+                onChange: function(selectedDates, dateStr, instance) {
+                    updateYearToBE(instance);
+                }
+            });
+        });
+        
+        
+        // Global Fetch interceptor to fix BE to CE dates in query params
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('?')) {
+                resource = resource.replace(/([?&](?:start_date|end_date)=)(\d{4})(-\d{2}-\d{2})/g, function(match, p1, p2, p3) {
+                    let year = parseInt(p2);
+                    if (year > 2400) year -= 543;
+                    return p1 + year + p3;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+
+        // Currency Formatter
+        function formatMoney(num) {
+            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    </script>
+
+
+    <!-- WriteOff Modal -->
+    <div class="modal fade" id="writeoffModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content glass-card border-0">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">✂️ ตัดชำรุด/เสียหาย</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>สินค้า:</strong> <span id="woProductName"></span></p>
+                    <p><strong>คงเหลือปัจจุบัน:</strong> <span id="woCurrentStock" class="fw-bold text-primary"></span> ชิ้น</p>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">จำนวนที่ต้องการตัดออก</label>
+                        <input type="number" id="woQty" class="form-control" min="1" value="1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">สาเหตุ</label>
+                        <select id="woReason" class="form-select">
+                            <option value="ชำรุด/เสียหาย">ชำรุด/เสียหาย</option>
+                            <option value="สูญหาย">สูญหาย</option>
+                            <option value="เบิกใช้ภายในร้าน">เบิกใช้ภายในร้าน</option>
+                            <option value="อื่นๆ">อื่นๆ</option>
+                        </select>
+                    </div>
+                    <input type="hidden" id="woProductId">
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-warning rounded-pill fw-bold" onclick="submitWriteoff()">ยืนยันการตัดสต๊อก</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WriteOff History Modal -->
+    <div class="modal fade" id="writeoffHistoryModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content glass-card border-0">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">📜 ประวัติตัดชำรุด / เบิกใช้</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row align-items-end mb-3">
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label text-muted small fw-bold">ตั้งแต่วันที่</label>
+                            <input type="date" id="woStartDate" class="form-control rounded-pill">
+                        </div>
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label text-muted small fw-bold">ถึงวันที่</label>
+                            <input type="date" id="woEndDate" class="form-control rounded-pill">
+                        </div>
+                        <div class="col-md-4 d-flex gap-2">
+                            <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="showWriteoffHistory()">🔍 กรอง</button>
+                            <button class="btn btn-outline-secondary w-100 rounded-pill fw-bold" onclick="clearWriteoffFilter()">❌ ล้าง</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>วันเวลา</th>
+                                    <th>สินค้า</th>
+                                    <th>จำนวน</th>
+                                    <th>สาเหตุ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="woHistoryTable">
+                                <!-- Data -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

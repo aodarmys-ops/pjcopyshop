@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Checking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; font-family: 'Inter', sans-serif; min-height: 100vh; padding-top: 20px;}
+        .glass-card { background: #fff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 20px; }
+        .text-variance-over { color: #198754; font-weight: bold; }
+        .text-variance-short { color: #dc3545; font-weight: bold; }
+        
+        @media print {
+            body * { visibility: hidden; }
+            .modal-content, .modal-content * { visibility: visible; }
+            .modal-content { position: absolute; left: 0; top: 0; width: 100%; border: none; box-shadow: none; }
+            .modal-header .btn-close, .modal-header .btn-print { display: none; }
+            .table-responsive { max-height: none !important; overflow: visible !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-dark">📋 ระบบตรวจนับสินค้า (Stock Checking)</h2>
+            <a href="/inventory" class="btn btn-outline-secondary rounded-pill">⬅ กลับคลังสินค้า</a>
+        </div>
+
+        <!-- History View -->
+        <div id="historyView" class="glass-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold m-0">ประวัติการตรวจนับสินค้า</h5>
+                <button class="btn btn-primary rounded-pill fw-bold" onclick="showNewCountView()">➕ สร้างการตรวจนับใหม่</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>รหัสรอบนับสต๊อก</th>
+                            <th>วันที่/เวลา</th>
+                            <th>สถานะ</th>
+                            <th>หมายเหตุ</th>
+                            <th class="text-center">การกระทำ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="countHistoryTable">
+                        <!-- JS renders -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- New Count View -->
+        <div id="newCountView" class="glass-card d-none">
+            <h5 class="fw-bold mb-3">สร้างการตรวจนับใหม่</h5>
+            <div class="mb-3">
+                <label class="form-label text-muted small fw-bold">หมายเหตุ / ผู้ตรวจนับ</label>
+                <input type="text" id="countNotes" class="form-control" placeholder="เช่น ตรวจนับประจำเดือน พ.ย. โดย นาย ก.">
+            </div>
+            
+            <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                        <tr>
+                            <th>บาร์โค้ด</th>
+                            <th>ชื่อสินค้า</th>
+                            <th>หมวดหมู่</th>
+                            <th class="text-center">สต๊อกในระบบ</th>
+                            <th class="text-center" style="width: 150px;">จำนวนที่นับได้</th>
+                            <th class="text-center">ขาด/เกิน</th>
+                        </tr>
+                    </thead>
+                    <tbody id="newCountItems">
+                        <!-- JS renders -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="d-flex justify-content-end mt-4">
+                <button class="btn btn-outline-secondary rounded-pill me-2 px-4 fw-bold" onclick="showHistoryView()">ยกเลิก</button>
+                <button class="btn btn-success rounded-pill px-4 fw-bold" onclick="submitCount()">💾 บันทึกและปรับปรุงสต๊อก</button>
+            </div>
+        </div>
+
+        <!-- Details / Report Modal -->
+        <div class="modal fade" id="detailsModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold" id="detailsModalTitle">รายงานผลการตรวจนับสินค้า</h5>
+                        <div>
+                            <button class="btn btn-outline-primary btn-print me-2 fw-bold" onclick="window.print()">🖨️ พิมพ์รายงาน</button>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-3" id="detailsModalMeta"></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>บาร์โค้ด</th>
+                                        <th>ชื่อสินค้า</th>
+                                        <th class="text-center">สต๊อกในระบบ</th>
+                                        <th class="text-center">จำนวนที่นับได้</th>
+                                        <th class="text-center">ขาด/เกิน (Variance)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detailsTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let productsData = [];
+
+        async function fetchHistory() {
+            const res = await fetch('/api/stock-counts');
+            const data = await res.json();
+            const tbody = document.getElementById('countHistoryTable');
+            tbody.innerHTML = '';
+            if(data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">ยังไม่มีประวัติการตรวจนับ</td></tr>`;
+                return;
+            }
+            data.forEach(d => {
+                const dateObj = new Date(d.count_date);
+                const dateStr = dateObj.toLocaleDateString('th-TH') + ' ' + dateObj.toLocaleTimeString('th-TH');
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="fw-bold">CHK-${d.id.toString().padStart(4, '0')}</td>
+                        <td>${dateStr}</td>
+                        <td><span class="badge bg-success">เสร็จสมบูรณ์</span></td>
+                        <td>${d.notes || '-'}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-info text-dark fw-bold rounded-pill" onclick="viewDetails(${d.id})">📄 ดูรายงานขาด/เกิน</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function showNewCountView() {
+            document.getElementById('historyView').classList.add('d-none');
+            document.getElementById('newCountView').classList.remove('d-none');
+            document.getElementById('countNotes').value = '';
+            
+            // Load products
+            const res = await fetch('/api/products');
+            const data = await res.json();
+            productsData = data.filter(p => p.type !== 'Service');
+            
+            const typeMap = {
+                "Service": "งานบริการ",
+                "Stationery": "เครื่องเขียน",
+                "Gift shop": "กิ๊ฟช๊อป",
+                "Dolls": "ตุ๊กตา",
+                "Toys": "ของเล่น",
+                "Perfume": "น้ำหอม",
+                "IT equipment": "อุปกรณ์ IT",
+                "Brewed Drink": "เครื่องดื่มชง",
+                "Water": "น้ำเปล่า",
+                "Soft drinks": "น้ำอัดลม",
+                "Retail": "สินค้าปลีก"
+            };
+
+            const tbody = document.getElementById('newCountItems');
+            tbody.innerHTML = '';
+            productsData.forEach(p => {
+                const thaiType = typeMap[p.type] || p.type;
+                tbody.innerHTML += `
+                    <tr>
+                        <td><small class="text-muted">${p.barcode || p.id}</small></td>
+                        <td class="fw-bold">${p.name}</td>
+                        <td>${thaiType}</td>
+                        <td class="text-center fs-5">${p.stock_qty}</td>
+                        <td>
+                            <input type="number" class="form-control text-center fw-bold count-input" 
+                                data-id="${p.id}" data-sysqty="${p.stock_qty}" value="${p.stock_qty}" onchange="calcVariance(this)">
+                        </td>
+                        <td class="text-center fw-bold variance-cell" id="var-${p.id}">0</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function calcVariance(input) {
+            const sysQty = parseInt(input.getAttribute('data-sysqty'));
+            const countQty = parseInt(input.value) || 0;
+            const variance = countQty - sysQty;
+            const cell = document.getElementById('var-' + input.getAttribute('data-id'));
+            
+            if (variance > 0) {
+                cell.innerText = '+' + variance;
+                cell.className = 'text-center text-variance-over';
+            } else if (variance < 0) {
+                cell.innerText = variance;
+                cell.className = 'text-center text-variance-short';
+            } else {
+                cell.innerText = '0';
+                cell.className = 'text-center fw-bold text-muted';
+            }
+        }
+
+        async function submitCount() {
+            if(!confirm('ยืนยันการบันทึกผลการนับสต๊อก?\n*ระบบจะอัปเดตจำนวนสินค้าคงเหลือตามที่กรอกทันที')) return;
+            
+            const notes = document.getElementById('countNotes').value;
+            const inputs = document.querySelectorAll('.count-input');
+            const items = [];
+            
+            inputs.forEach(input => {
+                const sysQty = parseInt(input.getAttribute('data-sysqty'));
+                const countQty = parseInt(input.value) || 0;
+                // We record all items to keep a snapshot, even if variance is 0.
+                items.push({
+                    product_id: parseInt(input.getAttribute('data-id')),
+                    system_qty: sysQty,
+                    counted_qty: countQty,
+                    variance: countQty - sysQty
+                });
+            });
+
+            const res = await fetch('/api/stock-counts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes, items })
+            });
+            const result = await res.json();
+            if(result.success) {
+                alert('บันทึกผลการตรวจนับและอัปเดตสต๊อกเรียบร้อยแล้ว!');
+                showHistoryView();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + result.error);
+            }
+        }
+
+        function showHistoryView() {
+            document.getElementById('newCountView').classList.add('d-none');
+            document.getElementById('historyView').classList.remove('d-none');
+            fetchHistory();
+        }
+
+        async function viewDetails(id) {
+            const res = await fetch('/api/stock-counts/' + id);
+            const data = await res.json();
+            
+            const dateObj = new Date(data.count.count_date);
+            document.getElementById('detailsModalTitle').innerText = 'รายงานผลการตรวจนับ: CHK-' + id.toString().padStart(4, '0');
+            document.getElementById('detailsModalMeta').innerText = `บันทึกเมื่อ: ${dateObj.toLocaleDateString('th-TH')} ${dateObj.toLocaleTimeString('th-TH')} | หมายเหตุ: ${data.count.notes || '-'}`;
+            
+            const tbody = document.getElementById('detailsTableBody');
+            tbody.innerHTML = '';
+            
+            data.items.forEach(item => {
+                let varClass = 'text-muted';
+                let varText = '0';
+                if (item.variance > 0) { varClass = 'text-variance-over'; varText = '+' + item.variance; }
+                else if (item.variance < 0) { varClass = 'text-variance-short'; varText = item.variance; }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><small class="text-muted">${item.barcode || '-'}</small></td>
+                        <td class="fw-bold">${item.name}</td>
+                        <td class="text-center">${item.system_qty}</td>
+                        <td class="text-center fw-bold">${item.counted_qty}</td>
+                        <td class="text-center ${varClass}">${varText}</td>
+                    </tr>
+                `;
+            });
+            
+            new bootstrap.Modal(document.getElementById('detailsModal')).show();
+        }
+
+        fetchHistory();
+    </script>
+</body>
+</html>
