@@ -22,10 +22,26 @@
         .print-area { display: none; }
         
         @media print {
+            @page { size: landscape; margin: 10mm; }
             body * { visibility: hidden; }
             .print-area, .print-area * { visibility: visible; }
-            .print-area { position: absolute; left: 0; top: 0; width: 100%; display: block; }
-            .barcode-item { margin: 15px; page-break-inside: avoid; border: none;}
+            .print-area { 
+                position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                display: flex; flex-wrap: wrap; align-content: flex-start;
+            }
+            .barcode-item { 
+                width: 33.33%; 
+                height: 33.33vh;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                margin: 0;
+                padding: 10px;
+                page-break-inside: avoid; 
+                border: none;
+            }
         }
     </style>
 
@@ -155,8 +171,8 @@
                 alert('กรุณาระบุจำนวนบาร์โค้ดที่ต้องการพิมพ์อย่างน้อย 1 รายการ');
                 return;
             }
-            if (totalQty > 10) {
-                alert('เพื่อพิมพ์ให้พอดีใน 1 หน้า กรุณาเลือกพิมพ์บาร์โค้ดรวมกันไม่เกิน 10 ดวงครับ');
+            if (totalQty > 9) {
+                alert('เพื่อพิมพ์ให้พอดีใน 1 หน้า (แนวนอน 3x3) กรุณาเลือกพิมพ์บาร์โค้ดรวมกันไม่เกิน 9 ดวงครับ');
                 return;
             }
 
@@ -175,9 +191,9 @@
                         img.className = 'barcode-svg';
                         
                         const title = document.createElement('div');
-                        title.style.fontSize = '14px';
+                        title.style.fontSize = '24px';
                         title.style.fontWeight = 'bold';
-                        title.innerText = name.length > 20 ? name.substring(0, 20) + '...' : name;
+                        title.innerText = name.length > 25 ? name.substring(0, 25) + '...' : name;
                         
                         div.appendChild(title);
                         div.appendChild(img);
@@ -186,9 +202,10 @@
                         JsBarcode(img, barcode, {
                             format: "CODE128",
                             displayValue: true,
-                            fontSize: 14,
-                            height: 50,
-                            margin: 5
+                            fontSize: 24,
+                            width: 3,
+                            height: 100,
+                            margin: 10
                         });
                     }
                 }
