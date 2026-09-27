@@ -270,6 +270,40 @@ def crm():
 def reports():
     return render_template('reports.html')
 
+@app.route('/stock-count')
+def stock_count():
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM Products_Services WHERE is_active = 1 AND type != 'Service' ORDER BY type ASC, name ASC").fetchall()
+    conn.close()
+    
+    type_map = {
+        "Service": "งานบริการ",
+        "Stationery": "เครื่องเขียน",
+        "Gift shop": "กิ๊ฟช๊อป",
+        "Dolls": "ตุ๊กตา",
+        "Toys": "ของเล่น",
+        "Perfume": "น้ำหอม",
+        "IT equipment": "อุปกรณ์ IT",
+        "Brewed Drink": "เครื่องดื่มชง",
+        "Water": "น้ำเปล่า",
+        "Soft drinks": "น้ำอัดลม",
+        "Retail": "สินค้าปลีก"
+    }
+    
+    grouped_products = {}
+    for r in rows:
+        ptype = r['type']
+        thai_type = type_map.get(ptype, ptype)
+        if thai_type not in grouped_products:
+            grouped_products[thai_type] = []
+        
+        # We need to map the type inside the dict too so it renders correctly in the table column
+        row_dict = dict(r)
+        row_dict['type_th'] = thai_type
+        grouped_products[thai_type].append(row_dict)
+        
+    return render_template('stock_count.html', grouped_products=grouped_products)
+
 @app.route('/api/products/search', methods=['GET'])
 def search_product():
     query = request.args.get('q', '')
