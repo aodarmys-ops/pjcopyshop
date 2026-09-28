@@ -11,3 +11,6 @@ ENV/
 *.bak
 test_results_report.csv
 generator_summary.txt
+service_account.json
+*.json_backup
+credentials.json

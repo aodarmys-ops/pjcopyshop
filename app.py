@@ -309,6 +309,15 @@ def change_password():
     
     return jsonify({'message': 'เปลี่ยนรหัสผ่านสำเร็จ'})
 
+@app.route('/api/sync-google-sheets', methods=['POST'])
+def api_sync_google_sheets():
+    try:
+        from sheets_sync import sync_data
+        result = sync_data()
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/')
 def index():
     user_agent = request.headers.get('User-Agent', '').lower()
