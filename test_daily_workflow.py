@@ -90,6 +90,10 @@ class DailyWorkflowTest(unittest.TestCase):
             VALUES (100, 0, 'Cash', 'Unpaid', 1)
         ''')
         sale_id = self.conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        self.conn.execute('''
+            INSERT INTO Customer_Credit (customer_id, sale_id, amount_due, amount_paid, status)
+            VALUES (1, ?, 100, 0, 'Unpaid')
+        ''', (sale_id,))
         self.conn.commit()
 
         response = self.client.put(f'/api/sales/{sale_id}/pay', json={'payment_method': 'PromptPay'})

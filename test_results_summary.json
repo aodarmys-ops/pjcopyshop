@@ -1,0 +1,92 @@
+{
+  "target": "http://127.0.0.1:5000",
+  "database": "xerox.db",
+  "executed_at": "2026-09-28T10:43:27.359341",
+  "duration_seconds": 0.29,
+  "total_tests": 56,
+  "passed": 56,
+  "failed": 0,
+  "pass_rate_percent": 100.0,
+  "categories": {
+    "Database Integrity": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Database Schema": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "Database Baseline": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "Authentication & Security": {
+      "total": 12,
+      "passed": 12,
+      "failed": 0
+    },
+    "Master Catalog": {
+      "total": 5,
+      "passed": 5,
+      "failed": 0
+    },
+    "Customer CRM": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Supply Chain": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "POS & Sales Operations": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0
+    },
+    "Loyalty & CRM Operations": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "Customer Credit & Debt": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "Job Orders": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "Inventory Auditing": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Financial Management": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "System Maintenance": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "Security & Resilience": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "UI & Template Health": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0
+    }
+  }
+}

@@ -8,6 +8,10 @@ def run_tests():
 
     # --- Session Management (จำสถานะการ Login) ---
     client = app.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user_id'] = 1
+        sess['username'] = 'Admin'
+        sess['role'] = 'Admin'
 
     INPUT_FILE = "test_data_events.json"
     REPORT_FILE = "test_results_report.csv"

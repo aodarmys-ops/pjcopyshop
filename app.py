@@ -11,10 +11,12 @@ def get_db_connection():
         if 'db' not in g:
             g.db = sqlite3.connect(DB_FILE)
             g.db.row_factory = sqlite3.Row
+            g.db.execute('PRAGMA foreign_keys = ON;')
         return g.db
     else:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA foreign_keys = ON;')
         return conn
 
 @app.teardown_appcontext
@@ -104,6 +106,7 @@ def init_db():
             subtotal REAL NOT NULL,
             vat_amount REAL DEFAULT 0,
             total_amount REAL NOT NULL,
+            payment_method TEXT DEFAULT 'Cash',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -212,6 +215,29 @@ def init_db():
             is_closed INTEGER DEFAULT 0,
             starting_cash REAL DEFAULT 0,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Stock Counts
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Stock_Counts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            count_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'Completed',
+            notes TEXT
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Stock_Count_Items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            count_id INTEGER,
+            product_id INTEGER,
+            system_qty INTEGER,
+            counted_qty INTEGER,
+            variance INTEGER,
+            FOREIGN KEY(count_id) REFERENCES Stock_Counts(id),
+            FOREIGN KEY(product_id) REFERENCES Products_Services(id)
         )
     ''')
     conn.commit()
@@ -389,7 +415,12 @@ def submit_stock_count():
         
         # Insert Items and update stock
         for item in items:
-            product_id = item['product_id']
+            product_id = item.get('product_id')
+            p = conn.execute("SELECT id FROM Products_Services WHERE id = ?", (product_id,)).fetchone()
+            if not p:
+                conn.close()
+                return jsonify({'error': f"Product {product_id} not found"}), 400
+
             system_qty = item['system_qty']
             counted_qty = item['counted_qty']
             variance = item['variance']
@@ -558,11 +589,16 @@ def edit_product_price(product_id):
 
 @app.route('/api/inventory/writeoff', methods=['POST'])
 def writeoff_stock():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     product_id = data.get('product_id')
-    qty = data.get('qty', 0)
+    raw_qty = data.get('qty', 0)
     reason = data.get('reason', 'ชำรุด')
     
+    try:
+        qty = int(raw_qty)
+    except (ValueError, TypeError):
+        return jsonify({"message": "Invalid quantity"}), 400
+
     if not product_id or qty <= 0:
         return jsonify({"message": "Invalid data"}), 400
         
@@ -628,13 +664,15 @@ def checkout_sale():
     import math
     subtotal = sum(item['price'] * item['qty'] for item in items)
     
-    # 0. Check Stock
+    # 0. Check Stock & Product Existence
     for item in items:
-        if item.get('type') != 'Service':
-            p = c.execute('SELECT stock_qty FROM Products_Services WHERE id = ?', (item['id'],)).fetchone()
-            if p and p['stock_qty'] < item['qty']:
-                conn.close()
-                return jsonify({"message": f"สินค้า {item.get('name', 'Product')} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
+        p = c.execute('SELECT stock_qty, type FROM Products_Services WHERE id = ?', (item.get('id'),)).fetchone()
+        if not p:
+            conn.close()
+            return jsonify({"message": f"Product id {item.get('id')} not found"}), 400
+        if item.get('type') != 'Service' and p['stock_qty'] < item.get('qty', 0):
+            conn.close()
+            return jsonify({"message": f"สินค้า {item.get('name', 'Product')} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
 
     loyalty_discount = 0
 
@@ -648,7 +686,12 @@ def checkout_sale():
             conn.close()
             return jsonify({"message": "Not enough points"}), 400
             
-        # Frontend already applies discount to item prices, so loyalty_discount is 0 here
+        has_drink = any(it.get('type') == 'Brewed Drink' for it in items)
+        if not has_drink:
+            conn.close()
+            return jsonify({"message": "Points can only be redeemed for brewed drinks"}), 400
+
+        loyalty_discount = (redeemed_points // 10) * 20
 
     discount = manual_discount + loyalty_discount
     total_amount = math.ceil(max(0, subtotal - discount))
@@ -689,7 +732,7 @@ def checkout_sale():
                   (sale_id, product_id, qty, price))
                   
         if payment_status != 'Hold':
-            if item_type == 'Brewed Drink' and not item.get('is_redeemed'):
+            if item_type == 'Brewed Drink' and not item.get('is_redeemed') and not redeemed_points:
                 earned_points += qty
             
             # Check BOM for Raw Materials deduction
@@ -893,13 +936,14 @@ def add_job():
             c.execute('INSERT INTO Customers (name, phone) VALUES (?, "")', (customer_name,))
             
     c.execute('INSERT INTO Job_Orders (customer_name, details, qty, deposit, status) VALUES (?, ?, ?, ?, ?)', (customer_name, details, qty, deposit, status))
+    job_id = c.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({"message": "Job created"}), 201
+    return jsonify({"message": "Job created", "job_id": job_id}), 201
 
 @app.route('/api/jobs/<int:job_id>', methods=['PUT'])
 def update_job_status(job_id):
-    data = request.get_json()
+    data = request.get_json() or {}
     status = data.get('status')
     
     conn = get_db_connection()
@@ -911,7 +955,7 @@ def update_job_status(job_id):
 
 @app.route('/api/jobs/<int:job_id>/complete', methods=['POST'])
 def complete_job(job_id):
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     total_amount = data.get('total_amount', 0)
     discount = data.get('discount', 0)
     payment_method = data.get('payment_method', 'Cash')
@@ -1046,12 +1090,20 @@ def get_expenses():
 
 @app.route('/api/expenses', methods=['POST'])
 def add_expense():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     description = data.get('description')
     amount = data.get('amount')
     expense_type = data.get('expense_type', 'OPEX')
     payment_method = data.get('payment_method', 'Cash')
     
+    if not description or amount is None:
+        return jsonify({"message": "Invalid expense data"}), 400
+        
+    try:
+        amount = float(amount)
+    except (ValueError, TypeError):
+        return jsonify({"message": "Invalid expense amount"}), 400
+        
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('INSERT INTO Expenses (description, amount, expense_type, payment_method) VALUES (?, ?, ?, ?)', (description, amount, expense_type, payment_method))
