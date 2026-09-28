@@ -198,6 +198,7 @@
                         <button onclick="backupToGDrive()" class="btn btn-primary w-100 rounded-pill fw-bold" id="gdriveBtn">☁️ อัพโหลดขึ้น Google Drive</button>
                         <a href="/api/backup/local" class="btn btn-outline-primary w-100 rounded-pill fw-bold" id="localBackupBtn" download>💾 สำรองข้อมูลลงเครื่อง</a>
                         <button onclick="document.getElementById('restoreFileInput').click()" class="btn btn-outline-success w-100 rounded-pill fw-bold" id="restoreBtn">🔄 เรียกคืนข้อมูล (Restore)</button>
+                        <button onclick="vacuumDatabase()" class="btn btn-outline-warning w-100 rounded-pill fw-bold" id="vacuumBtn">⚡ จัดเรียงและกระชับฐานข้อมูล (VACUUM)</button>
                         <input type="file" id="restoreFileInput" style="display: none;" accept=".zip" onchange="restoreBackup(this)">
                     </div>
                 </div>
@@ -207,6 +208,29 @@
 
     <!-- Global UI Scripts -->
     <script>
+        async function vacuumDatabase() {
+            if (!confirm("คุณต้องการจัดเรียงและกระชับฐานข้อมูล (VACUUM) ใช่หรือไม่?\n\nคำสั่งนี้จะช่วยจัดเรียงข้อมูล คืนพื้นที่ว่างในฮาร์ดดิสก์ และช่วยให้ระบบทำงานได้รวดเร็วเต็มประสิทธิภาพ")) {
+                return;
+            }
+            const btn = document.getElementById('vacuumBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ กำลังกระชับฐานข้อมูล...';
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/maintenance/vacuum', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`✅ ${data.message}\n\n• ขนาดก่อนจัดเรียง: ${data.size_before_kb} KB\n• ขนาดหลังจัดเรียง: ${data.size_after_kb} KB\n• คืนพื้นที่ว่างได้: ${data.saved_kb} KB`);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+            }
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+
         async function backupToGDrive() {
             const btn = document.getElementById('gdriveBtn');
             const originalText = btn.innerHTML;

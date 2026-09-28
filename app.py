@@ -1,6 +1,7 @@
 # pyrefly: ignore [missing-import]
 from flask import g, has_app_context, Flask, jsonify, request, render_template, session, redirect, url_for
 import sqlite3
+import os
 
 app = Flask(__name__)
 app.secret_key = 'pjcopyshop_secret_1234' # Required for session
@@ -1591,6 +1592,25 @@ def restore_backup():
         if os.path.exists('xerox_db.bak'):
             shutil.copy2('xerox_db.bak', DB_FILE)
         return jsonify({"message": f"Error: {str(e)}"}), 500
+
+@app.route('/api/maintenance/vacuum', methods=['POST'])
+def vacuum_database():
+    try:
+        size_before = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
+        conn = sqlite3.connect(DB_FILE, isolation_level=None)
+        conn.execute("VACUUM")
+        conn.execute("PRAGMA optimize")
+        conn.close()
+        size_after = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
+        saved_bytes = max(0, size_before - size_after)
+        return jsonify({
+            "message": "จัดเรียงและกระชับฐานข้อมูล (VACUUM) เรียบร้อยแล้ว!",
+            "size_before_kb": round(size_before / 1024, 2),
+            "size_after_kb": round(size_after / 1024, 2),
+            "saved_kb": round(saved_bytes / 1024, 2)
+        }), 200
+    except Exception as e:
+        return jsonify({"message": f"เกิดข้อผิดพลาด: {str(e)}"}), 500
 
 @app.route('/api/shutdown', methods=['POST'])
 def shutdown_server():
