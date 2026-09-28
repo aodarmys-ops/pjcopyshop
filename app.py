@@ -261,10 +261,26 @@ def login():
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['role'] = user['role']
+            
+            # Detect Mobile
+            user_agent = request.headers.get('User-Agent', '').lower()
+            if any(m in user_agent for m in ['mobile', 'android', 'iphone', 'ipad']):
+                return redirect(url_for('mobile_app'))
+                
             return redirect(url_for('index'))
         else:
             return render_template('login.html', error='รหัส PIN ไม่ถูกต้อง')
     return render_template('login.html')
+
+@app.route('/mobile-app')
+def mobile_app():
+    return render_template('mobile_app.html')
+
+@app.route('/mobile-count')
+def mobile_count():
+    return render_template('mobile_count.html')
+
+
 
 @app.route('/logout')
 def logout():
@@ -295,6 +311,9 @@ def change_password():
 
 @app.route('/')
 def index():
+    user_agent = request.headers.get('User-Agent', '').lower()
+    if any(m in user_agent for m in ['mobile', 'android', 'iphone', 'ipad']):
+        return redirect(url_for('mobile_app'))
     return render_template('index.html')
 
 @app.route('/print-barcodes')
@@ -1654,4 +1673,4 @@ def add_header(r):
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=True, port=5000)

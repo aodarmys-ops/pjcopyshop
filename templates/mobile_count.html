@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>บันทึกตรวจนับสต๊อก</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { 
+            background: #f8f9fa;
+            font-family: 'Inter', sans-serif; 
+            padding-bottom: 80px;
+        }
+        .header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .back-btn {
+            color: white;
+            font-size: 1.5rem;
+            text-decoration: none;
+            margin-right: 15px;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        #reader {
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            display: none;
+        }
+        .product-info {
+            display: none;
+            background: #e0f2fe;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #bae6fd;
+        }
+        .qty-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+            padding: 5px;
+        }
+        .qty-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            border: none;
+            background: #f3f4f6;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #374151;
+        }
+        .qty-btn:active { background: #e5e7eb; }
+        .qty-input {
+            width: 100px;
+            border: none;
+            text-align: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1f2937;
+            background: transparent;
+        }
+        .qty-input:focus { outline: none; }
+        .submit-btn {
+            height: 60px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            border-radius: 12px;
+        }
+        .history-item {
+            border-left: 4px solid #10b981;
+            padding: 10px 15px;
+            background: white;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <a href="/mobile-app" class="back-btn"><i class="bi bi-arrow-left"></i></a>
+        <h4 class="mb-0 fw-bold">ตรวจนับสต๊อก</h4>
+    </div>
+
+    <div class="container mt-4">
+        
+        <!-- Scanner Section -->
+        <div class="card">
+            <div class="card-body">
+                <button id="startScanBtn" class="btn btn-dark w-100 mb-3 py-3 rounded-3 fw-bold" onclick="startScanner()">
+                    <i class="bi bi-camera-fill me-2"></i> เปิดกล้องสแกนบาร์โค้ด
+                </button>
+                <button id="stopScanBtn" class="btn btn-danger w-100 mb-3 py-3 rounded-3 fw-bold" onclick="stopScanner()" style="display: none;">
+                    <i class="bi bi-stop-circle-fill me-2"></i> ปิดกล้อง
+                </button>
+                
+                <div id="reader" class="mb-3"></div>
+
+                <div class="text-center mb-3">
+                    <span class="badge bg-secondary">หรือกรอกรหัสด้วยตนเอง</span>
+                </div>
+
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text bg-white"><i class="bi bi-upc-scan"></i></span>
+                    <input type="text" id="manualBarcode" class="form-control" placeholder="รหัสบาร์โค้ด / ชื่อสินค้า" oninput="liveSearch(event)" onkeypress="handleEnter(event)">
+                    <button class="btn btn-primary fw-bold" onclick="searchProduct(true)">ค้นหา</button>
+                </div>
+                <div id="searchResults" class="list-group mt-2" style="display: none; max-height: 250px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+                <small class="text-danger mt-2 d-block" id="cameraWarning" style="display: none;">* การเปิดกล้องอาจไม่ทำงานหากไม่ได้เชื่อมต่อผ่าน HTTPS (ความปลอดภัยของเบราว์เซอร์)</small>
+            </div>
+        </div>
+
+        <!-- Product Info Section (Hidden initially) -->
+        <div id="productSection" class="card" style="display: none;">
+            <div class="card-body">
+                <div class="product-info mb-4" id="productInfoBox">
+                    <h5 class="fw-bold text-dark mb-1" id="pName">-</h5>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span class="badge bg-primary" id="pBarcode">-</span>
+                        <span class="text-muted small">สต๊อกเดิมระบบ: <strong class="text-dark fs-6" id="pSystemQty">0</strong></span>
+                    </div>
+                </div>
+
+                <label class="form-label fw-bold">จำนวนที่นับได้จริง (ชิ้น)</label>
+                <div class="qty-controls mb-4">
+                    <button class="qty-btn" onclick="adjustQty(-1)">-</button>
+                    <input type="number" id="countedQty" class="qty-input" value="1" min="0" onfocus="this.select()">
+                    <button class="qty-btn" onclick="adjustQty(1)">+</button>
+                </div>
+
+                <button class="btn btn-success w-100 submit-btn" onclick="submitCount()">
+                    <i class="bi bi-save me-2"></i> บันทึกจำนวน
+                </button>
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <h6 class="fw-bold text-muted mt-4 mb-3 px-1">ประวัติการนับล่าสุด (บนมือถือนี้)</h6>
+        <div id="historyList">
+            <!-- Items will be prepended here -->
+            <p class="text-muted small text-center" id="noHistory">ยังไม่มีรายการ</p>
+        </div>
+
+    </div>
+
+    <script>
+        let html5QrcodeScanner = null;
+        let currentProduct = null;
+
+        function startScanner() {
+            document.getElementById('startScanBtn').style.display = 'none';
+            document.getElementById('stopScanBtn').style.display = 'block';
+            document.getElementById('reader').style.display = 'block';
+            document.getElementById('cameraWarning').style.display = 'block';
+
+            if (!html5QrcodeScanner) {
+                html5QrcodeScanner = new Html5Qrcode("reader");
+            }
+            
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+            
+            html5QrcodeScanner.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText, decodedResult) => {
+                    // Success
+                    stopScanner();
+                    document.getElementById('manualBarcode').value = decodedText;
+                    searchProduct(true);
+                },
+                (errorMessage) => {
+                    // Ignore background scan errors
+                }
+            ).catch(err => {
+                alert("ไม่สามารถเปิดกล้องได้: " + err + "\n(อาจเป็นเพราะไม่ได้เชื่อมต่อแบบ https)");
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+                html5QrcodeScanner.stop().then(() => {
+                    document.getElementById('startScanBtn').style.display = 'block';
+                    document.getElementById('stopScanBtn').style.display = 'none';
+                    document.getElementById('reader').style.display = 'none';
+                });
+            }
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') {
+                searchProduct(true);
+            }
+        }
+
+        let searchTimeout = null;
+        function liveSearch(e) {
+            clearTimeout(searchTimeout);
+            const q = e.target.value.trim();
+            if (q.length < 2) {
+                document.getElementById('searchResults').style.display = 'none';
+                return;
+            }
+            searchTimeout = setTimeout(() => {
+                searchProduct(false);
+            }, 400); // 400ms debounce
+        }
+
+        let lastSearchResults = [];
+
+        async function searchProduct(isManualSubmit = false) {
+            const q = document.getElementById('manualBarcode').value.trim();
+            if(!q) return;
+            
+            document.getElementById('searchResults').style.display = 'none';
+            document.getElementById('productSection').style.display = 'none';
+
+            const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            lastSearchResults = data;
+
+            if (data.length > 0) {
+                // Find exact barcode match first
+                let exactMatch = data.find(x => x.barcode === q);
+                
+                if (exactMatch && isManualSubmit) {
+                    selectProduct(exactMatch);
+                } else if (data.length === 1 && isManualSubmit) {
+                    selectProduct(data[0]);
+                } else {
+                    // Show selection list
+                    const listHtml = data.map((p, index) => `
+                        <button class="list-group-item list-group-item-action text-start" onclick="selectProductByIndex(${index})">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1 fw-bold text-dark">${p.name}</h6>
+                                <small class="text-primary fw-bold">${p.stock_qty} ชิ้น</small>
+                            </div>
+                            <small class="text-muted">${p.barcode || 'ไม่มีบาร์โค้ด'}</small>
+                        </button>
+                    `).join('');
+                    document.getElementById('searchResults').innerHTML = listHtml;
+                    document.getElementById('searchResults').style.display = 'block';
+                }
+            } else {
+                document.getElementById('searchResults').innerHTML = `<div class="list-group-item text-danger text-center fw-bold">❌ ไม่พบสินค้าจากคำค้นหานี้</div>`;
+                document.getElementById('searchResults').style.display = 'block';
+                currentProduct = null;
+            }
+        }
+
+        function selectProductByIndex(index) {
+            if (lastSearchResults[index]) {
+                selectProduct(lastSearchResults[index]);
+            }
+        }
+
+        function selectProduct(p) {
+            document.getElementById('searchResults').style.display = 'none';
+            currentProduct = p;
+            
+            document.getElementById('pName').innerText = p.name;
+            document.getElementById('pBarcode').innerText = p.barcode || 'ไม่มีบาร์โค้ด';
+            document.getElementById('pSystemQty').innerText = p.stock_qty;
+            
+            // Set default count to system qty or 1
+            document.getElementById('countedQty').value = p.stock_qty;
+            
+            document.getElementById('productSection').style.display = 'block';
+            document.getElementById('productInfoBox').style.display = 'block';
+            
+            // Focus qty input for easy editing
+            setTimeout(() => {
+                const el = document.getElementById('countedQty');
+                el.focus();
+                el.select();
+            }, 100);
+        }
+
+        function adjustQty(amount) {
+            const el = document.getElementById('countedQty');
+            let val = parseInt(el.value) || 0;
+            val += amount;
+            if(val < 0) val = 0;
+            el.value = val;
+        }
+
+        async function submitCount() {
+            if (!currentProduct) return;
+            
+            const counted_qty = parseInt(document.getElementById('countedQty').value) || 0;
+            const system_qty = currentProduct.stock_qty;
+            const variance = counted_qty - system_qty;
+            
+            const payload = {
+                notes: `นับผ่านมือถือ (${new Date().toLocaleString('th-TH')})`,
+                items: [{
+                    product_id: currentProduct.id,
+                    system_qty: system_qty,
+                    counted_qty: counted_qty,
+                    variance: variance
+                }]
+            };
+
+            try {
+                const res = await fetch('/api/stock-counts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+                if(data.success) {
+                    addHistoryItem(currentProduct.name, counted_qty, variance);
+                    
+                    // Reset
+                    document.getElementById('productSection').style.display = 'none';
+                    document.getElementById('manualBarcode').value = '';
+                    currentProduct = null;
+                    
+                    // Optional: start scanner again automatically?
+                    // startScanner();
+                } else {
+                    alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err.message);
+            }
+        }
+
+        function addHistoryItem(name, qty, variance) {
+            document.getElementById('noHistory').style.display = 'none';
+            const list = document.getElementById('historyList');
+            
+            let varianceHtml = '';
+            if (variance > 0) {
+                varianceHtml = `<span class="badge bg-success">+${variance}</span>`;
+            } else if (variance < 0) {
+                varianceHtml = `<span class="badge bg-danger">${variance}</span>`;
+            } else {
+                varianceHtml = `<span class="badge bg-secondary">ตรง</span>`;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${name}</strong><br>
+                        <small class="text-muted">ยอดที่นับได้: ${qty}</small>
+                    </div>
+                    <div>${varianceHtml}</div>
+                </div>
+            `;
+            list.insertBefore(item, list.firstChild);
+        }
+    </script>
+</body>
+</html>
