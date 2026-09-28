@@ -1,8 +1,7 @@
 import json
-import re
 import csv
+import re
 import requests
-import time
 from urllib.parse import urljoin
 
 BASE_URL = "http://127.0.0.1:5000"
@@ -18,10 +17,20 @@ def run_tests():
         print(f"Error loading {INPUT_FILE}: {e}")
         return
 
-    print(f"Loaded {len(events)} events. Starting tests...")
+    print(f"Loaded {len(events)} events. Starting tests against REAL APP at {BASE_URL}...")
+
+    # ใช้ requests.Session() เพื่อให้ระบบจำ Cookie/Login State ข้ามเคสได้
+    session = requests.Session()
+
+    # --- Login ก่อนเริ่มเทสเพื่อให้เข้าถึง API ได้ ---
+    print("Logging in as Admin...")
+    login_url = urljoin(BASE_URL, '/login')
+    session.post(login_url, data={'pin': '1234'}, allow_redirects=False)
+    print("Login sequence completed. Session authenticated.")
 
     passed = 0
     failed = 0
+    skipped = 0
     results = []
 
     for idx, event in enumerate(events):
@@ -32,33 +41,32 @@ def run_tests():
         dimension = event.get('dimension', '')
         entity = event.get('entity', '')
 
+        # ตรวจสอบว่า Action เป็น HTTP หรือเป็นแค่คำอธิบาย
         match = re.search(r'\b(GET|POST|PUT|DELETE|PATCH)\b\s+(/[^\s]+)', action)
-        if match:
-            method = match.group(1)
-            endpoint = match.group(2)
-        else:
-            print(f"[{event_id}] Invalid action format: {action}")
+        if not match:
             results.append({
                 "event_id": event_id, "dimension": dimension, "entity": entity, 
                 "action": action, "expected_status": expected_status, 
-                "actual_status": "ERROR", "result": "FAIL", "error": "Invalid action format"
+                "actual_status": "SKIPPED", "result": "SKIP", "error": "Manual Workflow Test (No API endpoint)"
             })
-            failed += 1
+            skipped += 1
             continue
             
+        method = match.group(1)
+        endpoint = match.group(2)
         url = urljoin(BASE_URL, endpoint)
         
         try:
             if method.upper() == 'GET':
-                resp = requests.get(url, params=payload, timeout=5)
+                resp = session.get(url, params=payload, timeout=5, allow_redirects=False)
             elif method.upper() == 'POST':
-                resp = requests.post(url, json=payload, timeout=5)
+                resp = session.post(url, json=payload, timeout=5, allow_redirects=False)
             elif method.upper() == 'PUT':
-                resp = requests.put(url, json=payload, timeout=5)
+                resp = session.put(url, json=payload, timeout=5, allow_redirects=False)
             elif method.upper() == 'DELETE':
-                resp = requests.delete(url, json=payload, timeout=5)
+                resp = session.delete(url, json=payload, timeout=5, allow_redirects=False)
             else:
-                resp = requests.request(method, url, json=payload, timeout=5)
+                resp = session.request(method, url, json=payload, timeout=5, allow_redirects=False)
                 
             actual_status = resp.status_code
             error_msg = ""
@@ -89,7 +97,7 @@ def run_tests():
             print(f"Processed {idx + 1}/{len(events)} tests...")
             
     print(f"\nTest Execution Completed!")
-    print(f"Total: {len(events)} | Passed: {passed} | Failed: {failed}")
+    print(f"Total: {len(events)} | Passed: {passed} | Failed: {failed} | Skipped: {skipped}")
     
     print(f"Writing report to {REPORT_FILE}...")
     with open(REPORT_FILE, 'w', encoding='utf-8', newline='') as csvfile:

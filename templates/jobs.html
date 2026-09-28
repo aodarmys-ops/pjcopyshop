@@ -20,38 +20,103 @@
     <!-- TomSelect -->
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    
+
+
+    <!-- DataTables -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+    function escapeHTML(str) {
+        if(str === null || str === undefined) return '';
+        return str.toString().replace(/[&<>'"]/g, 
+            tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[tag]));
+    }
+    </script>
+
     <style>
+        
+
+
+    
+
+    <style>
+        /* Modern Button Styles */
+        .btn {
+            border-radius: 8px !important;
+            transition: all 0.2s ease-in-out !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.3px !important;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+        .btn-success { background-color: #10b981; border-color: #10b981; color: white; }
+        .btn-success:hover { background-color: #059669; border-color: #059669; color: white; }
+        .btn-primary { background-color: #3b82f6; border-color: #3b82f6; color: white; }
+        .btn-primary:hover { background-color: #2563eb; border-color: #2563eb; color: white; }
+        .btn-warning { background-color: #f59e0b; border-color: #f59e0b; color: white; }
+        .btn-warning:hover { background-color: #d97706; border-color: #d97706; color: white; }
+        .btn-danger { background-color: #ef4444; border-color: #ef4444; color: white; }
+        .btn-danger:hover { background-color: #dc2626; border-color: #dc2626; color: white; }
+        .btn-outline-secondary { color: #6b7280; border-color: #d1d5db; background-color: transparent; }
+        .btn-outline-secondary:hover { background-color: #f3f4f6; color: #111827; border-color: #9ca3af; }
+
+        
+        /* Font Sizer Inline */
         .font-sizer {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #fff;
-            padding: 5px;
-            border-radius: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            z-index: 9999;
             display: flex;
-            gap: 5px;
+            gap: 8px;
+            background: #fff;
+            padding: 5px 10px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border: 1px solid #e5e7eb;
+            margin-right: 15px;
         }
         .font-sizer button {
             border: none;
-            background: #f8f9fa;
+            background: #f3f4f6;
             border-radius: 50%;
-            width: 36px;
-            height: 36px;
+            width: 32px;
+            height: 32px;
             font-weight: bold;
+            color: #4b5563;
             cursor: pointer;
             transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            padding: 0;
         }
-        .font-sizer button:hover { background: #e9ecef; }
-    </style>
-
+        .font-sizer button:hover { 
+            background: #e5e7eb; 
+            color: #111827;
+        }
+</style>
 </head>
 <body>
+
+    
+
     <div class="container">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="fw-bold text-dark">📋 ระบบคิวงานบริการ (Job Orders)</h2>
-            <a href="/" class="btn btn-outline-secondary rounded-pill">⬅ กลับหน้าหลัก</a>
+            <a href="/" class="btn btn-outline-secondary rounded-circle p-2 shadow-sm" title="กลับหน้าหลัก"><span style="font-size: 1.25rem; line-height: 1; padding: 0 2px;">🏠</span></a>
         </div>
         
         <div class="row">
@@ -61,7 +126,10 @@
                     <h5 class="fw-bold mb-3">สร้างใบรับงานใหม่</h5>
                     <form id="addJobForm">
                         <div class="mb-3">
-                            <label class="form-label text-muted small fw-bold">ชื่อลูกค้า</label>
+                            <label class="form-label text-muted small fw-bold d-flex justify-content-between align-items-center w-100 mb-1">
+                                <span>ชื่อลูกค้า</span>
+                                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none fw-bold" onclick="openAddCustomerModal()">+ เพิ่มลูกค้าใหม่</button>
+                            </label>
                             <select id="jCustomer" placeholder="เลือกลูกค้า หรือพิมพ์ชื่อเพื่อบันทึกใหม่..." autocomplete="off" required></select>
                         </div>
                         <div class="row mb-3">
@@ -88,7 +156,7 @@
                 <div class="glass-card">
                     <h5 class="fw-bold mb-3">รายการงานปัจจุบัน</h5>
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mt-2">
+                        <table id="jobDataTable" class="table table-hover align-middle mt-2">
                             <thead class="table-light">
                                 <tr>
                                     <th>รหัสงาน</th>
@@ -103,6 +171,34 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Customer Modal -->
+    <div class="modal fade" id="addCustomerModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">➕ เพิ่มลูกค้าใหม่</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCustomerFormModal">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ชื่อลูกค้า</label>
+                            <input type="text" class="form-control" id="newCName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">เบอร์โทรศัพท์ (ถ้ามี)</label>
+                            <input type="text" class="form-control" id="newCPhone">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="submitNewCustomer()">บันทึกข้อมูล</button>
                 </div>
             </div>
         </div>
@@ -192,7 +288,43 @@
 
     <script>
         let paymentModal;
+        let addCustomerModal;
         let customerSelectInstance = null;
+        
+        function openAddCustomerModal() {
+            if (!addCustomerModal) {
+                addCustomerModal = new bootstrap.Modal(document.getElementById('addCustomerModal'));
+            }
+            document.getElementById('addCustomerFormModal').reset();
+            addCustomerModal.show();
+        }
+        
+        async function submitNewCustomer() {
+            const name = document.getElementById('newCName').value.trim();
+            const phone = document.getElementById('newCPhone').value.trim();
+            if(!name) {
+                alert("กรุณากรอกชื่อลูกค้า");
+                return;
+            }
+            
+            const res = await fetch('/api/customers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone })
+            });
+            const data = await res.json();
+            
+            if(res.ok) {
+                alert('เพิ่มข้อมูลลูกค้าใหม่สำเร็จ!');
+                addCustomerModal.hide();
+                await loadCustomers();
+                if(customerSelectInstance) {
+                    customerSelectInstance.setValue(name);
+                }
+            } else {
+                alert(data.message || 'เกิดข้อผิดพลาดในการเพิ่มข้อมูลลูกค้า');
+            }
+        }
 
         function toggleSplitPayment() {
             const method = document.getElementById('payMethod').value;
@@ -234,16 +366,14 @@
                 const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
                 const products = await res.json();
                 
-                if(products.length === 1 && products[0].barcode === query) {
+                if(products.length === 1) {
                     addProductToMiniCart(products[0]);
                     bInput.value = '';
                     acList.style.display = 'none';
-                } else if(products.length > 0) {
-                    addProductToMiniCart(products[0]);
-                    bInput.value = '';
-                    acList.style.display = 'none';
+                } else if(products.length > 1) {
+                    bInput.dispatchEvent(new Event('input'));
                 } else {
-                    alert("ไม่พบสินค้า");
+                    alert("ไม่พบสินค้า!");
                 }
             }
         });
@@ -262,7 +392,8 @@
                 products.slice(0, 5).forEach(p => {
                     let li = document.createElement('li');
                     li.className = 'list-group-item list-group-item-action cursor-pointer';
-                    li.innerHTML = `<strong>${p.name}</strong> <small class="text-muted ms-1">[${p.barcode || 'ไม่มีบาร์โค้ด'}]</small> <span class="badge bg-primary float-end">฿${p.price}</span>`;
+                    const brandText = p.brand ? ` <span class="badge bg-secondary ms-1">${escapeHTML(p.brand)}</span>` : '';
+                    li.innerHTML = `<strong>${escapeHTML(p.name)}</strong>${brandText} <small class="text-muted ms-1">[${escapeHTML(p.barcode || 'ไม่มีบาร์โค้ด')}]</small> <span class="badge bg-primary float-end">฿${p.price}</span>`;
                     li.onclick = () => {
                         addProductToMiniCart(p);
                         bInput.value = '';
@@ -271,10 +402,10 @@
                     };
                     acList.appendChild(li);
                 });
-                acList.style.display = 'block';
             } else {
-                acList.style.display = 'none';
+                acList.innerHTML = '<li class="list-group-item text-muted text-center py-3">ไม่พบสินค้า</li>';
             }
+            acList.style.display = 'block';
         });
 
         // Hide autocomplete when clicking outside
@@ -295,9 +426,9 @@
             select.innerHTML = '<option value="">เลือกลูกค้า หรือพิมพ์ชื่อใหม่...</option>';
             
             customers.forEach(c => {
-                let displayName = c.name;
-                if(c.phone) displayName += ` (${c.phone})`;
-                select.innerHTML += `<option value="${c.name}">${displayName}</option>`;
+                let displayName = escapeHTML(c.name);
+                if(c.phone) displayName += ` (${escapeHTML(c.phone)})`;
+                select.innerHTML += `<option value="${escapeHTML(c.name)}">${displayName}</option>`;
             });
 
             customerSelectInstance = new TomSelect(select, {
@@ -329,31 +460,53 @@
             const data = await res.json();
             const tbody = document.getElementById('jobTable');
             tbody.innerHTML = '';
+            let rowsHtml = '';
             
-            if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">🎉 ตอนนี้คิวงานว่างแล้ว!</td></tr>`;
-                return;
+            if(data.length === 0) {
+                tbody.innerHTML = '';
             }
 
             data.forEach(j => {
                 let row = `<tr>
                     <td><small class="text-muted fw-bold">#JOB-${String(j.id).padStart(4, '0')}</small></td>
-                    <td class="fw-bold">${j.customer_name}</td>
+                    <td class="fw-bold">${escapeHTML(j.customer_name)}</td>
                     <td>
-                        ${j.details}
+                        ${escapeHTML(j.details)}
                         ${(j.qty || j.deposit) ? `<br><small class="text-muted">จำนวน: ${j.qty || 1} | มัดจำ: ${j.deposit || 0} บาท</small>` : ''}
                     </td>
-                    <td>
-                        <span class="badge rounded-pill bg-primary p-2 shadow-sm">
-                            📦 ${j.status}
+                    <td class="align-middle">
+                        <span class="badge rounded-pill bg-primary p-2 px-3 shadow-sm d-inline-flex align-items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clock-history" viewBox="0 0 16 16"><path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.429.747.91zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483zm.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501zm-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z"/><path d="M8 1a7 7 0 1 0 4.95 11.95l.707.707A8.001 8.001 0 1 1 8 0z"/><path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5"/></svg>
+                            ${j.status}
                         </span>
                     </td>
-                    <td>
-                        <button class="btn btn-sm btn-success rounded-pill shadow-sm fw-bold px-3 mb-1" onclick="openPayment(${j.id}, ${j.deposit || 0})">💰 รับเงิน</button>
-                        <button class="btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-bold px-3" onclick="cancelJob(${j.id})">❌ ยกเลิก</button>
+                    <td class="text-center align-middle">
+                        <div class="d-flex justify-content-center gap-2">
+                            <button class="btn btn-sm btn-success rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;" onclick="openPayment(${j.id}, ${j.deposit || 0})" title="รับเงิน">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cash-coin" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M11 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8m5-4a5 5 0 1 1-10 0 5 5 0 0 1 10 0"/><path d="M9.438 11.944c.047.596.518 1.06 1.363 1.116v.44h.375v-.443c.875-.061 1.386-.529 1.386-1.207 0-.618-.39-.936-1.09-1.1l-.296-.07v-1.2c.376.043.614.248.671.532h.658c-.047-.575-.54-1.024-1.329-1.073V8.5h-.375v.45c-.747.073-1.255.522-1.255 1.158 0 .562.378.92 1.007 1.066l.248.061v1.272c-.384-.058-.639-.27-.696-.563h-.668zm1.36-1.354c-.369-.085-.569-.26-.569-.522 0-.294.216-.514.572-.578v1.1h-.003zm.432.746c.449.104.655.272.655.569 0 .339-.257.571-.709.614v-1.195l.054.012z"/><path d="M1 0a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h4.083c.058-.344.145-.678.258-1H3a2 2 0 0 0-2-2V3a2 2 0 0 0 2-2h10a2 2 0 0 0 2 2v3.528c.38.34.717.728 1 1.154V1a1 1 0 0 0-1-1z"/><path d="M9.998 5.083 10 5a2 2 0 1 0-3.132 1.65 5.982 5.982 0 0 1 3.13-1.567z"/></svg>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;" onclick="cancelJob(${j.id})" title="ยกเลิก">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                            </button>
+                        </div>
                     </td>
                 </tr>`;
-                tbody.innerHTML += row;
+                rowsHtml += row;
+            });
+            if ($.fn.DataTable.isDataTable('#jobDataTable')) {
+                $('#jobDataTable').DataTable().destroy();
+            }
+            if(rowsHtml) tbody.innerHTML = rowsHtml;
+            $('#jobDataTable').DataTable({
+                pagingType: 'full_numbers',
+                language: {
+                    paginate: { first: 'แรกสุด', previous: 'ก่อนหน้า', next: 'ถัดไป', last: 'ท้ายสุด' },
+                    lengthMenu: "แสดง _MENU_ รายการ",
+                    zeroRecords: "ไม่พบข้อมูล",
+                    info: "แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ",
+                    infoEmpty: "ไม่มีข้อมูล",
+                    search: "ค้นหา:"
+                }
             });
         }
         
@@ -377,7 +530,8 @@
                 list.innerHTML += `
                     <tr>
                         <td>
-                            <div class="fw-bold">${item.name}</div>
+                            <div class="fw-bold">${escapeHTML(item.name)}</div>
+                            ${item.brand ? `<small class="text-muted">ยี่ห้อ: ${escapeHTML(item.brand)}</small>` : ''}
                         </td>
                         <td style="width: 90px;">
                             <div class="input-group input-group-sm">
@@ -490,11 +644,13 @@
                 })
             });
             
+            const data = await res.json();
             if (res.ok) {
+                alert("บันทึกส่งมอบงานเรียบร้อยแล้ว!");
                 paymentModal.hide();
                 fetchJobs();
             } else {
-                alert("เกิดข้อผิดพลาดในการบันทึก");
+                alert(data.message || "เกิดข้อผิดพลาดในการบันทึก");
             }
         }
 
@@ -513,14 +669,20 @@
                 deposit: parseFloat(document.getElementById('jDeposit').value) || 0
             };
             
-            await fetch('/api/jobs', {
+            const res = await fetch('/api/jobs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            const data = await res.json();
             
-            e.target.reset();
-            if (customerSelectInstance) customerSelectInstance.setValue('');
+            if(res.ok) {
+                alert('สร้างคิวรับงานใหม่เรียบร้อยแล้ว!');
+                e.target.reset();
+                if (customerSelectInstance) customerSelectInstance.setValue('');
+            } else {
+                alert(data.message || 'เกิดข้อผิดพลาดในการสร้างคิวรับงาน');
+            }
             fetchJobs();
         });
 
@@ -530,11 +692,6 @@
     </script>
 
     <!-- Global UI Scripts -->
-    <div class="font-sizer">
-        <button onclick="changeFontSize(-1)" title="ลดขนาดตัวอักษร">A-</button>
-        <button onclick="changeFontSize(0)" title="ขนาดปกติ">A</button>
-        <button onclick="changeFontSize(1)" title="เพิ่มขนาดตัวอักษร">A+</button>
-    </div>
     <script>
         // Font Size Logic
         const sizes = ['0.85rem', '1rem', '1.15rem', '1.3rem'];

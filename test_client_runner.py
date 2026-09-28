@@ -1,53 +1,12 @@
 import json
 import csv
 import re
-import os
-import sqlite3
-
-# --- 1. Database Isolation (แก้ปัญหาขยะฐานข้อมูล) ---
-TEST_DB = 'test_xerox.db'
-
-# ทำการ Override (Patch) ตัวแปรฐานข้อมูลของ app.py ให้มาใช้ไฟล์ Test แทน
 import app
-app.DB_FILE = TEST_DB
-
-def setup_test_db():
-    """ลบฐานข้อมูลเทสเก่าทิ้ง สร้างใหม่ และนำข้อมูล Seed มาฝัง (Seeding)"""
-    if os.path.exists(TEST_DB):
-        try:
-            os.remove(TEST_DB)
-        except PermissionError:
-            pass # Ignore if locked, though it shouldn't be
-
-    # ให้ app.py สร้างตารางให้ใหม่ทั้งหมด
-    app.init_db()
-
-    seed_file = 'test_data_db_seed.json'
-    if os.path.exists(seed_file):
-        with open(seed_file, 'r', encoding='utf-8') as f:
-            seed_data = json.load(f)
-        
-        conn = sqlite3.connect(TEST_DB)
-        c = conn.cursor()
-        
-        for table, rows in seed_data.items():
-            for row in rows:
-                cols = ', '.join(row.keys())
-                placeholders = ', '.join(['?'] * len(row))
-                values = tuple(row.values())
-                try:
-                    c.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", values)
-                except sqlite3.Error as e:
-                    pass # Skip duplicate or error rows in seed
-        conn.commit()
-        conn.close()
 
 def run_tests():
-    print("Setting up isolated test database (test_xerox.db)...")
-    setup_test_db()
-    print("Database isolated and seeded successfully!")
+    print("Running tests against REAL database (xerox.db)...")
 
-    # --- 2. Session Management (จำสถานะการ Login) ---
+    # --- Session Management (จำสถานะการ Login) ---
     client = app.app.test_client()
 
     INPUT_FILE = "test_data_events.json"
@@ -71,14 +30,45 @@ def run_tests():
         dimension = event.get('dimension', '')
         entity = event.get('entity', '')
 
-        # --- 3. Mock Test Execution (จำลองการทำงานเพื่อให้ Pass 100%) ---
-        # ข้ามการตรวจสอบ Format และบังคับให้ actual_status ตรงกับ expected_status เพื่อจำลองการ Pass ทั้งหมด
-        actual_status = expected_status
-        error_msg = "Mocked Execution (Simulated Pass)"
-        
-        is_pass = True
-        passed += 1
-        result_str = "PASS"
+        # --- Action Mapper & Filter (ข้ามเคสที่เป็นคำอธิบาย Workflow) ---
+        match = re.search(r'\b(GET|POST|PUT|DELETE|PATCH)\b\s+(/[^\s]+)', action)
+        if not match:
+            results.append({
+                "event_id": event_id, "dimension": dimension, "entity": entity,
+                "action": action, "expected_status": expected_status,
+                "actual_status": "SKIPPED", "result": "SKIP", "error": "Manual Workflow Test (No API endpoint)"
+            })
+            skipped += 1
+            continue
+
+        method = match.group(1)
+        endpoint = match.group(2)
+
+        try:
+            if method == 'GET':
+                resp = client.get(endpoint, query_string=payload)
+            elif method == 'POST':
+                resp = client.post(endpoint, json=payload)
+            elif method == 'PUT':
+                resp = client.put(endpoint, json=payload)
+            elif method == 'DELETE':
+                resp = client.delete(endpoint, json=payload)
+            else:
+                resp = client.open(endpoint, method=method, json=payload)
+            
+            actual_status = resp.status_code
+            error_msg = ""
+        except Exception as e:
+            actual_status = 500
+            error_msg = str(e)
+
+        is_pass = (actual_status == expected_status)
+        if is_pass:
+            passed += 1
+            result_str = "PASS"
+        else:
+            failed += 1
+            result_str = "FAIL"
 
         results.append({
             "event_id": event_id, "dimension": dimension, "entity": entity,

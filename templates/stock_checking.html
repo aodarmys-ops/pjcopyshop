@@ -19,13 +19,105 @@
             .modal-header .btn-close, .modal-header .btn-print { display: none; }
             .table-responsive { max-height: none !important; overflow: visible !important; }
         }
+    
     </style>
+
+    <!-- DataTables -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+    function escapeHTML(str) {
+        if(str === null || str === undefined) return '';
+        return str.toString().replace(/[&<>'"]/g, 
+            tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[tag]));
+    }
+    </script>
+
+    <style>
+        
+
+
+    
+
+    <style>
+        /* Modern Button Styles */
+        .btn {
+            border-radius: 8px !important;
+            transition: all 0.2s ease-in-out !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.3px !important;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+        .btn-success { background-color: #10b981; border-color: #10b981; color: white; }
+        .btn-success:hover { background-color: #059669; border-color: #059669; color: white; }
+        .btn-primary { background-color: #3b82f6; border-color: #3b82f6; color: white; }
+        .btn-primary:hover { background-color: #2563eb; border-color: #2563eb; color: white; }
+        .btn-warning { background-color: #f59e0b; border-color: #f59e0b; color: white; }
+        .btn-warning:hover { background-color: #d97706; border-color: #d97706; color: white; }
+        .btn-danger { background-color: #ef4444; border-color: #ef4444; color: white; }
+        .btn-danger:hover { background-color: #dc2626; border-color: #dc2626; color: white; }
+        .btn-outline-secondary { color: #6b7280; border-color: #d1d5db; background-color: transparent; }
+        .btn-outline-secondary:hover { background-color: #f3f4f6; color: #111827; border-color: #9ca3af; }
+
+        
+        /* Font Sizer Inline */
+        .font-sizer {
+            display: flex;
+            gap: 8px;
+            background: #fff;
+            padding: 5px 10px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border: 1px solid #e5e7eb;
+            margin-right: 15px;
+        }
+        .font-sizer button {
+            border: none;
+            background: #f3f4f6;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            font-weight: bold;
+            color: #4b5563;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            padding: 0;
+        }
+        .font-sizer button:hover { 
+            background: #e5e7eb; 
+            color: #111827;
+        }
+</style>
 </head>
 <body>
+
+    
+
     <div class="container">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="fw-bold text-dark">📋 ระบบตรวจนับสินค้า (Stock Checking)</h2>
-            <a href="/inventory" class="btn btn-outline-secondary rounded-pill">⬅ กลับคลังสินค้า</a>
+            <a href="/inventory" class="btn btn-outline-secondary rounded-circle p-2 shadow-sm" title="ย้อนกลับ"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-arrow-left-circle-fill" viewBox="0 0 16 16" style="margin-bottom: 2px;">
+  <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm3.5 7.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H11.5z"/>
+</svg></a>
         </div>
 
         <!-- History View -->
@@ -35,7 +127,7 @@
                 <button class="btn btn-primary rounded-pill fw-bold" onclick="showNewCountView()">➕ สร้างการตรวจนับใหม่</button>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table id="countHistoryDataTable" class="table table-hover align-middle">
                     <thead class="table-light">
                         <tr>
                             <th>รหัสรอบนับสต๊อก</th>
@@ -61,7 +153,7 @@
             </div>
             
             <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
-                <table class="table table-bordered align-middle">
+                <table id="stockCountTable" class="table table-bordered align-middle">
                     <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                         <tr>
                             <th>บาร์โค้ด</th>
@@ -128,14 +220,14 @@
             const data = await res.json();
             const tbody = document.getElementById('countHistoryTable');
             tbody.innerHTML = '';
+            let rowsHtml = '';
             if(data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">ยังไม่มีประวัติการตรวจนับ</td></tr>`;
-                return;
+                tbody.innerHTML = '';
             }
             data.forEach(d => {
                 const dateObj = new Date(d.count_date);
                 const dateStr = dateObj.toLocaleDateString('th-TH') + ' ' + dateObj.toLocaleTimeString('th-TH');
-                tbody.innerHTML += `
+                rowsHtml += `
                     <tr>
                         <td class="fw-bold">CHK-${d.id.toString().padStart(4, '0')}</td>
                         <td>${dateStr}</td>
@@ -146,6 +238,22 @@
                         </td>
                     </tr>
                 `;
+            });
+
+            tbody.innerHTML = rowsHtml;
+            if ($.fn.DataTable.isDataTable('#countHistoryDataTable')) {
+                $('#countHistoryDataTable').DataTable().destroy();
+            }
+            $('#countHistoryDataTable').DataTable({
+                pagingType: 'full_numbers',
+                language: {
+                    paginate: { first: 'แรกสุด', previous: 'ก่อนหน้า', next: 'ถัดไป', last: 'ท้ายสุด' },
+                    lengthMenu: "แสดง _MENU_ รายการ",
+                    zeroRecords: "ไม่พบข้อมูล",
+                    info: "แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ",
+                    infoEmpty: "ไม่มีข้อมูล",
+                    search: "ค้นหา:"
+                }
             });
         }
 
@@ -175,12 +283,13 @@
 
             const tbody = document.getElementById('newCountItems');
             tbody.innerHTML = '';
+            let rowsHtml = '';
             productsData.forEach(p => {
                 const thaiType = typeMap[p.type] || p.type;
-                tbody.innerHTML += `
+                rowsHtml += `
                     <tr>
-                        <td><small class="text-muted">${p.barcode || p.id}</small></td>
-                        <td class="fw-bold">${p.name}</td>
+                        <td><small class="text-muted">${escapeHTML(p.barcode || p.id)}</small></td>
+                        <td class="fw-bold" style="word-break: break-all; max-width: 200px;">${escapeHTML(p.name)}</td>
                         <td>${thaiType}</td>
                         <td class="text-center fs-5">${p.stock_qty}</td>
                         <td>
@@ -190,6 +299,22 @@
                         <td class="text-center fw-bold variance-cell" id="var-${p.id}">0</td>
                     </tr>
                 `;
+            });
+
+            tbody.innerHTML = rowsHtml;
+            if ($.fn.DataTable.isDataTable('#stockCountTable')) {
+                $('#stockCountTable').DataTable().destroy();
+            }
+            $('#stockCountTable').DataTable({
+                pagingType: 'full_numbers',
+                language: {
+                    paginate: { first: 'แรกสุด', previous: 'ก่อนหน้า', next: 'ถัดไป', last: 'ท้ายสุด' },
+                    lengthMenu: "แสดง _MENU_ รายการ",
+                    zeroRecords: "ไม่พบข้อมูล",
+                    info: "แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ",
+                    infoEmpty: "ไม่มีข้อมูล",
+                    search: "ค้นหา:"
+                }
             });
         }
 
@@ -269,8 +394,8 @@
 
                 tbody.innerHTML += `
                     <tr>
-                        <td><small class="text-muted">${item.barcode || '-'}</small></td>
-                        <td class="fw-bold">${item.name}</td>
+                        <td><small class="text-muted">${escapeHTML(item.barcode || '-')}</small></td>
+                        <td class="fw-bold">${escapeHTML(item.name)}</td>
                         <td class="text-center">${item.system_qty}</td>
                         <td class="text-center fw-bold">${item.counted_qty}</td>
                         <td class="text-center ${varClass}">${varText}</td>

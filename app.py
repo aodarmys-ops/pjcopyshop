@@ -1,5 +1,5 @@
 # pyrefly: ignore [missing-import]
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for
+from flask import g, has_app_context, Flask, jsonify, request, render_template, session, redirect, url_for
 import sqlite3
 
 app = Flask(__name__)
@@ -7,9 +7,21 @@ app.secret_key = 'pjcopyshop_secret_1234' # Required for session
 DB_FILE = 'xerox.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if has_app_context():
+        if 'db' not in g:
+            g.db = sqlite3.connect(DB_FILE)
+            g.db.row_factory = sqlite3.Row
+        return g.db
+    else:
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 def init_db():
     conn = get_db_connection()
@@ -207,7 +219,7 @@ def init_db():
 
 @app.before_request
 def require_login():
-    allowed_routes = ['login', 'static']
+    allowed_routes = ['login', 'static', 'change_password']
     if request.endpoint not in allowed_routes and 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -231,6 +243,28 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/api/change-password', methods=['POST'])
+def change_password():
+    data = request.get_json() or {}
+    username = data.get('username')
+    old_pin = data.get('old_pin')
+    new_pin = data.get('new_pin')
+    
+    if not username or not old_pin or not new_pin:
+        return jsonify({'error': 'ข้อมูลไม่ครบถ้วน'}), 400
+        
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM Users WHERE username = ? AND pin = ?', (username, old_pin)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'error': 'ชื่อผู้ใช้หรือรหัสผ่านเก่าไม่ถูกต้อง'}), 401
+        
+    conn.execute('UPDATE Users SET pin = ? WHERE id = ?', (new_pin, user['id']))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'message': 'เปลี่ยนรหัสผ่านสำเร็จ'})
 
 @app.route('/')
 def index():
@@ -381,11 +415,11 @@ def submit_stock_count():
 
 @app.route('/api/products/search', methods=['GET'])
 def search_product():
-    query = request.args.get('q', '')
+    query = request.args.get('q', '').strip()
     conn = get_db_connection()
     products = conn.execute(
-        'SELECT * FROM Products_Services WHERE barcode LIKE ? OR name LIKE ?',
-        (f'%{query}%', f'%{query}%')
+        'SELECT * FROM Products_Services WHERE barcode LIKE ? OR name LIKE ? OR id = ? LIMIT 50',
+        (f'%{query}%', f'%{query}%', query if query.isdigit() else -1)
     ).fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in products])
@@ -419,13 +453,26 @@ def add_product():
 
     conn = get_db_connection()
     c = conn.cursor()
+    
+    # Check for duplicates
+    if barcode:
+        existing = c.execute('SELECT name, barcode FROM Products_Services WHERE barcode = ? AND is_active = 1', (barcode,)).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"message": f"มีสินค้ารหัสบาร์โค้ดนี้ ในระบบแล้ว!"}), 400
+            
+    existing_exact = c.execute('SELECT name FROM Products_Services WHERE name = ? AND brand = ? AND model = ? AND color = ? AND is_active = 1', (name, brand, model, color)).fetchone()
+    if existing_exact:
+        conn.close()
+        return jsonify({"message": f"มีสินค้านี้ (ชื่อ, ยี่ห้อ, รุ่น, สี เดียวกัน) ในระบบแล้ว!"}), 400
+
     c.execute('''
         INSERT INTO Products_Services (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level))
     conn.commit()
     conn.close()
-    return jsonify({"message": "Product added successfully"}), 201
+    return jsonify({"message": "เพิ่มสินค้าใหม่เรียบร้อยแล้ว"}), 201
 
 @app.route('/api/products/<int:product_id>/stock', methods=['PUT'])
 def add_product_stock(product_id):
@@ -469,6 +516,19 @@ def update_product(product_id):
 
     conn = get_db_connection()
     c = conn.cursor()
+    
+    # Check for duplicates
+    if barcode:
+        existing = c.execute('SELECT name, barcode FROM Products_Services WHERE barcode = ? AND id != ? AND is_active = 1', (barcode, product_id)).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"message": f"มีสินค้ารหัสบาร์โค้ดนี้ ในระบบแล้ว!"}), 400
+            
+    existing_exact = c.execute('SELECT name FROM Products_Services WHERE name = ? AND brand = ? AND model = ? AND color = ? AND id != ? AND is_active = 1', (name, brand, model, color, product_id)).fetchone()
+    if existing_exact:
+        conn.close()
+        return jsonify({"message": f"มีสินค้านี้ (ชื่อ, ยี่ห้อ, รุ่น, สี เดียวกัน) ในระบบแล้ว!"}), 400
+
     c.execute('''
         UPDATE Products_Services 
         SET name=?, type=?, barcode=?, brand=?, model=?, color=?, price=?, cost=?, stock_qty=?, reorder_level=?
@@ -825,6 +885,13 @@ def add_job():
     
     conn = get_db_connection()
     c = conn.cursor()
+    
+    # Auto-add customer if not exists
+    if customer_name:
+        existing_cust = c.execute('SELECT id FROM Customers WHERE name = ?', (customer_name,)).fetchone()
+        if not existing_cust:
+            c.execute('INSERT INTO Customers (name, phone) VALUES (?, "")', (customer_name,))
+            
     c.execute('INSERT INTO Job_Orders (customer_name, details, qty, deposit, status) VALUES (?, ?, ?, ?, ?)', (customer_name, details, qty, deposit, status))
     conn.commit()
     conn.close()
@@ -1013,11 +1080,18 @@ def add_customer():
     
     conn = get_db_connection()
     c = conn.cursor()
+    
+    # Check for duplicates
+    existing = c.execute('SELECT id FROM Customers WHERE name = ? OR (phone != "" AND phone = ?)', (name, phone)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({"message": "มีชื่อลูกค้า หรือ เบอร์โทรนี้ ในระบบแล้ว!"}), 400
+        
     c.execute('INSERT INTO Customers (name, phone, points) VALUES (?, ?, 0)', (name, phone))
     customer_id = c.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({"message": "Customer added", "id": customer_id}), 201
+    return jsonify({"message": "เพิ่มข้อมูลลูกค้าสำเร็จ", "id": customer_id}), 201
 
 @app.route('/api/customers/<int:customer_id>/points', methods=['PUT'])
 
@@ -1472,6 +1546,39 @@ def shutdown_server():
     # Send interrupt signal to the current process to shut it down gracefully
     os.kill(os.getpid(), signal.SIGINT)
     return jsonify({"message": "กำลังปิดระบบ..."})
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    traceback.print_exc()
+    return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/users', methods=['POST'])
+def add_user():
+    data = request.get_json() or {}
+    username = data.get('username')
+    pin = data.get('pin', '0000')
+    role = data.get('role', 'Staff')
+    if not username: return jsonify({"error": "Missing username"}), 400
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
+        c.execute('INSERT INTO Users (username, pin, role) VALUES (?, ?, ?)', (username, pin, role))
+        conn.commit()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"message": "User created"}), 201
+
+
+@app.after_request
+def add_header(r):
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    r.headers['Cache-Control'] = 'public, max-age=0'
+    return r
 
 if __name__ == '__main__':
     init_db()
