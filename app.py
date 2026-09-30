@@ -429,18 +429,29 @@ def submit_stock_count():
     data = request.get_json()
     notes = data.get('notes', '')
     items = data.get('items', [])
+    count_id = data.get('count_id', None)
     
     if not items:
         return jsonify({'error': 'No items provided'}), 400
         
     conn = get_db_connection()
     try:
-        # Create Count session
-        cursor = conn.execute(
-            "INSERT INTO Stock_Counts (notes) VALUES (?)", 
-            (notes,)
-        )
-        count_id = cursor.lastrowid
+        if not count_id:
+            # Create Count session
+            cursor = conn.execute(
+                "INSERT INTO Stock_Counts (notes) VALUES (?)", 
+                (notes,)
+            )
+            count_id = cursor.lastrowid
+        else:
+            # If joining existing session from mobile, append mobile badge note
+            if notes and 'นับผ่านมือถือ' in notes:
+                existing = conn.execute("SELECT notes FROM Stock_Counts WHERE id = ?", (count_id,)).fetchone()
+                if existing:
+                    existing_notes = existing['notes'] or ''
+                    if 'นับผ่านมือถือ' not in existing_notes:
+                        new_notes = f"{existing_notes} | {notes}" if existing_notes.strip() and existing_notes.strip() != '-' else notes
+                        conn.execute("UPDATE Stock_Counts SET notes = ? WHERE id = ?", (new_notes, count_id))
         
         # Insert Items and update stock
         for item in items:
@@ -454,10 +465,19 @@ def submit_stock_count():
             counted_qty = item['counted_qty']
             variance = item['variance']
             
-            conn.execute('''
-                INSERT INTO Stock_Count_Items (count_id, product_id, system_qty, counted_qty, variance)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (count_id, product_id, system_qty, counted_qty, variance))
+            existing_item = conn.execute("SELECT id FROM Stock_Count_Items WHERE count_id = ? AND product_id = ?", (count_id, product_id)).fetchone()
+            
+            if existing_item:
+                conn.execute('''
+                    UPDATE Stock_Count_Items 
+                    SET system_qty = ?, counted_qty = ?, variance = ? 
+                    WHERE id = ?
+                ''', (system_qty, counted_qty, variance, existing_item['id']))
+            else:
+                conn.execute('''
+                    INSERT INTO Stock_Count_Items (count_id, product_id, system_qty, counted_qty, variance)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (count_id, product_id, system_qty, counted_qty, variance))
             
             if variance != 0:
                 conn.execute(
@@ -996,6 +1016,13 @@ def complete_job(job_id):
     conn = get_db_connection()
     c = conn.cursor()
     
+    # Check if trying to use Unpaid for General Customer
+    if payment_status == 'Unpaid':
+        job = c.execute("SELECT * FROM Job_Orders WHERE id = ?", (job_id,)).fetchone()
+        if not job or job['customer_name'] == 'ทั่วไป':
+            conn.close()
+            return jsonify({"message": "ไม่สามารถบันทึกค้างชำระสำหรับ 'ลูกค้าทั่วไป' ได้ กรุณาเลือกลูกค้าจากระบบสมาชิก"}), 400
+
     # Check Stock for scanned items
     if items:
         for item in items:
@@ -1671,6 +1698,63 @@ def add_user():
         return jsonify({"error": str(e)}), 400
     return jsonify({"message": "User created"}), 201
 
+
+def crc16_ccitt(data):
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = (crc << 1) ^ 0x1021
+            else:
+                crc <<= 1
+            crc &= 0xFFFF
+    return crc
+
+def generate_promptpay_payload(target, amount=None):
+    target = target.strip()
+    if len(target) == 10:
+        target = '0066' + target[1:]
+    elif len(target) == 13: # National ID
+        target = target
+        
+    payload = "00020101021129370016A0000006770101110113" + target
+    payload += "5802TH5303764"
+    if amount:
+        amt_str = f"{float(amount):.2f}"
+        payload += f"54{len(amt_str):02d}{amt_str}"
+    payload += "6304"
+    
+    crc = crc16_ccitt(payload.encode('ascii'))
+    return payload + f"{crc:04X}"
+
+@app.route('/api/generate-qr', methods=['POST'])
+def generate_qr():
+    try:
+        import qrcode
+        import io
+        import base64
+    except ImportError:
+        return jsonify({'error': 'Missing libraries'}), 500
+        
+    data = request.get_json() or {}
+    amount = data.get('amount')
+    promptpay_number = '0812345678' # เบอร์สมมุติตามที่ขอ
+    
+    try:
+        payload = generate_promptpay_payload(promptpay_number, amount)
+        img = qrcode.make(payload)
+        img_io = io.BytesIO()
+        img.save(img_io, 'PNG')
+        img_io.seek(0)
+        img_b64 = base64.b64encode(img_io.getvalue()).decode('utf-8')
+        
+        return jsonify({
+            'success': True, 
+            'qr_image': f"data:image/png;base64,{img_b64}"
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.after_request
 def add_header(r):

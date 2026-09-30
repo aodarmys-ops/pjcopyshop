@@ -98,9 +98,12 @@
 </head>
 <body>
 
-    <div class="header">
-        <a href="/mobile-app" class="back-btn"><i class="bi bi-arrow-left"></i></a>
-        <h4 class="mb-0 fw-bold">ตรวจนับสต๊อก</h4>
+    <div class="header d-flex justify-content-between align-items-center w-100">
+        <div class="d-flex align-items-center">
+            <a href="/mobile-app" class="back-btn"><i class="bi bi-arrow-left"></i></a>
+            <h4 class="mb-0 fw-bold">ตรวจนับสต๊อก</h4>
+        </div>
+        <div id="sessionInfo"></div>
     </div>
 
     <div class="container mt-4">
@@ -167,6 +170,33 @@
     <script>
         let html5QrcodeScanner = null;
         let currentProduct = null;
+        let mobileCountSessionId = null;
+
+        // Auto join today's active session
+        async function checkActiveSession() {
+            try {
+                const res = await fetch('/api/stock-counts');
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    const latest = data[0];
+                    const countDate = new Date(latest.count_date);
+                    const today = new Date();
+                    
+                    if (countDate.toDateString() === today.toDateString()) {
+                        mobileCountSessionId = latest.id;
+                        document.getElementById('sessionInfo').innerHTML = `<span class="badge bg-light text-success fw-bold">รอบ: MOB-${latest.id.toString().padStart(4, '0')}</span>`;
+                    } else {
+                        document.getElementById('sessionInfo').innerHTML = `<span class="badge bg-light text-dark fw-bold">รอบใหม่</span>`;
+                    }
+                } else {
+                    document.getElementById('sessionInfo').innerHTML = `<span class="badge bg-light text-dark fw-bold">รอบใหม่</span>`;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', checkActiveSession);
 
         function startScanner() {
             document.getElementById('startScanBtn').style.display = 'none';
@@ -313,6 +343,7 @@
             const variance = counted_qty - system_qty;
             
             const payload = {
+                count_id: mobileCountSessionId,
                 notes: `นับผ่านมือถือ (${new Date().toLocaleString('th-TH')})`,
                 items: [{
                     product_id: currentProduct.id,
@@ -331,6 +362,10 @@
                 
                 const data = await res.json();
                 if(data.success) {
+                    if(!mobileCountSessionId && data.count_id) {
+                        mobileCountSessionId = data.count_id;
+                        document.getElementById('sessionInfo').innerHTML = `<span class="badge bg-light text-success fw-bold">รอบ: MOB-${mobileCountSessionId.toString().padStart(4, '0')}</span>`;
+                    }
                     addHistoryItem(currentProduct.name, counted_qty, variance);
                     
                     // Reset
@@ -375,5 +410,67 @@
             list.insertBefore(item, list.firstChild);
         }
     </script>
+
+    <!-- Global Barcode Scanner Fix -->
+    <script>
+    (function() {
+        const thToEnMap = {
+            'ๅ':'1','/':'2','-':'3','ภ':'4','ถ':'5','ุ':'6','ึ':'7','ค':'8','ต':'9','จ':'0','ข':'-','ช':'=',
+            'ๆ':'q','ไ':'w','ำ':'e','พ':'r','ะ':'t','ั':'y','ี':'u','ร':'i','น':'o','ย':'p','บ':'[','ล':']','\\':'\\',
+            'ฟ':'a','ห':'s','ก':'d','ด':'f','เ':'g','้':'h','่':'j','า':'k','ส':'l','ว':';','ง':'\'',
+            'ผ':'z','ป':'x','แ':'c','อ':'v','ิ':'b','ื':'n','ท':'m','ม':',','ใ':'.','ฝ':'/',
+            '+':'!','๑':'1','๒':'2','๓':'3','๔':'4','ู':'^','฿':'&','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9',
+            '๐':'0','"':'W','ฎ':'E','ฑ':'R','ธ':'T','ํ':'Y','๊':'U','ณ':'I','ฯ':'O','ญ':'P','ฐ':'{',',':'}','|':'|',
+            'ฤ':'A','ฆ':'S','ฏ':'D','โ':'F','ฌ':'G','็':'H','๋':'J','ษ':'K','ศ':'L','ซ':':','.':'"','(':'Z',')':'X',
+            'ฉ':'C','ฮ':'V','ฺ':'B','์':'N','?':'M','ฒ':'<','ฬ':'>','ฦ':'?'
+        };
+        
+        window.thToEnBarcode = function(str) {
+            if (!str) return '';
+            return str.split('').map(c => thToEnMap[c] || c).join('');
+        };
+
+        let lastKeyTime = 0;
+        let isScanner = false;
+        
+        document.addEventListener('keydown', function(e) {
+            const currentTime = Date.now();
+            if (currentTime - lastKeyTime < 30) {
+                isScanner = true;
+            } else {
+                isScanner = false;
+            }
+            lastKeyTime = currentTime;
+        }, true);
+
+        let previousValues = new Map();
+        document.addEventListener('input', function(e) {
+            if (e.target && e.target.tagName === 'INPUT' && (e.target.type === 'text' || e.target.type === 'search')) {
+                const oldVal = previousValues.get(e.target) || '';
+                const newVal = e.target.value;
+                previousValues.set(e.target, newVal);
+                
+                const id = (e.target.id || '').toLowerCase();
+                const cls = (e.target.className || '').toLowerCase();
+                const isBarcodeField = id.includes('barcode') || id === 'searchbar' || cls.includes('barcode') || e.target.type === 'search';
+                
+                if (isBarcodeField) {
+                    const diff = newVal.length - oldVal.length;
+                    // If diff > 3 (pasted/wedged) or isScanner (rapid keypresses)
+                    if (diff > 3 || isScanner) {
+                        const converted = window.thToEnBarcode(newVal);
+                        if (converted !== newVal) {
+                            e.target.value = converted;
+                            previousValues.set(e.target, converted);
+                            // Ensure the model updates in case of frameworks, or other listeners catch the change
+                            e.target.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    }
+                }
+            }
+        }, true);
+    })();
+    </script>
+
 </body>
 </html>

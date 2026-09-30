@@ -202,10 +202,11 @@
                             <label class="form-label text-muted small fw-bold">ช่องทางการชำระ</label>
                             <select class="form-select fw-bold text-primary" id="paymentMethod" onchange="toggleSplitPayment()">
                                 <option value="Cash">💵 เงินสด</option>
-                                <option value="PromptPay">📱 สแกนจ่าย</option>
+                                <option value="PromptPay">📱 สแกนจ่าย (โอน)</option>
                                 <option value="Split">🔀 แยกชำระ (เงินสด+โอน)</option>
                                 <option value="None" class="d-none" id="optNone">❌ ยังไม่ชำระ</option>
                             </select>
+                            <button id="btnGenerateQR" class="btn btn-sm btn-outline-primary mt-2 w-100 d-none" onclick="generateQR()">📲 สร้าง QR รับเงิน</button>
                         </div>
                         <div class="col-6">
                             <label class="form-label text-muted small fw-bold">สถานะ</label>
@@ -242,7 +243,24 @@
         </div>
     </div>
 
+    <!-- QR Code Modal -->
+    <div class="modal fade" id="qrCodeModal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-primary mx-auto">📱 สแกนเพื่อชำระเงิน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" style="position: absolute; right: 15px;"></button>
+                </div>
+                <div class="modal-body text-center pt-2">
+                    <img id="qrCodeImg" src="" alt="QR Code" class="img-fluid rounded shadow-sm mb-2" style="max-width: 250px;">
+                    <p class="mb-0 text-muted small fw-bold">ชื่อบัญชี: ร้านถ่ายเอกสาร</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
+
         let cart = [];
         let allCustomers = [];
         let totalRedeemedPoints = 0;
@@ -578,10 +596,56 @@
         function toggleSplitPayment() {
             const method = document.getElementById('paymentMethod').value;
             const splitDiv = document.getElementById('splitPaymentDiv');
+            const qrBtn = document.getElementById('btnGenerateQR');
             if (method === 'Split') {
                 splitDiv.classList.remove('d-none');
             } else {
                 splitDiv.classList.add('d-none');
+            }
+            if (method === 'PromptPay' || method === 'Split') {
+                if (qrBtn) qrBtn.classList.remove('d-none');
+            } else {
+                if (qrBtn) qrBtn.classList.add('d-none');
+            }
+        }
+
+        async function generateQR() {
+            let amount = 0;
+            const method = document.getElementById('paymentMethod').value;
+            if (method === 'PromptPay') {
+                amount = parseFloat(document.getElementById('totalAmount').innerText.replace(/,/g, '')) || 0;
+            } else if (method === 'Split') {
+                amount = parseFloat(document.getElementById('splitTransfer').value) || 0;
+            }
+            
+            if (amount <= 0) {
+                alert("กรุณาระบุยอดเงินโอนก่อนสร้าง QR Code");
+                return;
+            }
+            
+            const btn = document.getElementById('btnGenerateQR');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ กำลังสร้าง...';
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch('/api/generate-qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amount })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('qrCodeImg').src = data.qr_image;
+                    new bootstrap.Modal(document.getElementById('qrCodeModal')).show();
+                } else {
+                    alert('ไม่สามารถสร้าง QR Code ได้: ' + data.error);
+                }
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
 
@@ -972,5 +1036,67 @@
             });
         }
     </script>
+
+    <!-- Global Barcode Scanner Fix -->
+    <script>
+    (function() {
+        const thToEnMap = {
+            'ๅ':'1','/':'2','-':'3','ภ':'4','ถ':'5','ุ':'6','ึ':'7','ค':'8','ต':'9','จ':'0','ข':'-','ช':'=',
+            'ๆ':'q','ไ':'w','ำ':'e','พ':'r','ะ':'t','ั':'y','ี':'u','ร':'i','น':'o','ย':'p','บ':'[','ล':']','\\':'\\',
+            'ฟ':'a','ห':'s','ก':'d','ด':'f','เ':'g','้':'h','่':'j','า':'k','ส':'l','ว':';','ง':'\'',
+            'ผ':'z','ป':'x','แ':'c','อ':'v','ิ':'b','ื':'n','ท':'m','ม':',','ใ':'.','ฝ':'/',
+            '+':'!','๑':'1','๒':'2','๓':'3','๔':'4','ู':'^','฿':'&','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9',
+            '๐':'0','"':'W','ฎ':'E','ฑ':'R','ธ':'T','ํ':'Y','๊':'U','ณ':'I','ฯ':'O','ญ':'P','ฐ':'{',',':'}','|':'|',
+            'ฤ':'A','ฆ':'S','ฏ':'D','โ':'F','ฌ':'G','็':'H','๋':'J','ษ':'K','ศ':'L','ซ':':','.':'"','(':'Z',')':'X',
+            'ฉ':'C','ฮ':'V','ฺ':'B','์':'N','?':'M','ฒ':'<','ฬ':'>','ฦ':'?'
+        };
+        
+        window.thToEnBarcode = function(str) {
+            if (!str) return '';
+            return str.split('').map(c => thToEnMap[c] || c).join('');
+        };
+
+        let lastKeyTime = 0;
+        let isScanner = false;
+        
+        document.addEventListener('keydown', function(e) {
+            const currentTime = Date.now();
+            if (currentTime - lastKeyTime < 30) {
+                isScanner = true;
+            } else {
+                isScanner = false;
+            }
+            lastKeyTime = currentTime;
+        }, true);
+
+        let previousValues = new Map();
+        document.addEventListener('input', function(e) {
+            if (e.target && e.target.tagName === 'INPUT' && (e.target.type === 'text' || e.target.type === 'search')) {
+                const oldVal = previousValues.get(e.target) || '';
+                const newVal = e.target.value;
+                previousValues.set(e.target, newVal);
+                
+                const id = (e.target.id || '').toLowerCase();
+                const cls = (e.target.className || '').toLowerCase();
+                const isBarcodeField = id.includes('barcode') || id === 'searchbar' || cls.includes('barcode') || e.target.type === 'search';
+                
+                if (isBarcodeField) {
+                    const diff = newVal.length - oldVal.length;
+                    // If diff > 3 (pasted/wedged) or isScanner (rapid keypresses)
+                    if (diff > 3 || isScanner) {
+                        const converted = window.thToEnBarcode(newVal);
+                        if (converted !== newVal) {
+                            e.target.value = converted;
+                            previousValues.set(e.target, converted);
+                            // Ensure the model updates in case of frameworks, or other listeners catch the change
+                            e.target.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    }
+                }
+            }
+        }, true);
+    })();
+    </script>
+
 </body>
 </html>
