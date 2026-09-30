@@ -29,7 +29,10 @@ def upload_to_drive(file_buffer, filename):
 
     service = build('drive', 'v3', credentials=creds)
 
-    file_metadata = {'name': filename}
+    file_metadata = {
+        'name': filename,
+        'parents': ['1ahjfrmW9tuAfw6etKrcR0CiuTQz2FMV3']
+    }
     media = MediaIoBaseUpload(file_buffer, mimetype='application/zip', resumable=True)
     
     file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
