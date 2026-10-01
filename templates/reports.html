@@ -310,15 +310,9 @@
                 <div class="glass-card h-100 d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold m-0" id="salesTableTitle">ประวัติการขายล่าสุด</h5>
-                        <select id="salesPageSize" class="form-select form-select-sm w-auto" onchange="changeSalesPageSize()">
-                            <option value="10" selected>แสดง 10 รายการ</option>
-                            <option value="20">แสดง 20 รายการ</option>
-                            <option value="50">แสดง 50 รายการ</option>
-                            <option value="100">แสดง 100 รายการ</option>
-                        </select>
                     </div>
                     <div class="table-responsive flex-grow-1" style="max-height: none; min-height: 400px;">
-                        <table class="table table-hover align-middle">
+                        <table id="recentSalesDt" class="table table-hover align-middle w-100">
                             <thead class="table-light">
                                 <tr>
                                     <th>รหัสบิล</th>
@@ -328,16 +322,7 @@
                                     <th class="text-center">จัดการ</th>
                                 </tr>
                             </thead>
-                            <tbody id="salesTable">
-                                <!-- Data rendered by JS -->
-                            </tbody>
                         </table>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mt-3">
-                        <small class="text-muted" id="salesPageInfo"></small>
-                        <ul class="pagination pagination-sm m-0" id="salesPagination">
-                            <!-- Pagination rendered by JS -->
-                        </ul>
                     </div>
                 </div>
             </div>
@@ -345,12 +330,16 @@
     </div>
 
     <script>
-        let allRecentSales = [];
-        let currentSalesPage = 1;
-        let salesPageSize = 10;
+        let salesDt;
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initSalesDataTable();
+            fetchReports();
+        });
         
         // Format Currency
         const fmt = (num) => '' + parseFloat(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const fmtQty = (num) => '' + parseInt(num).toLocaleString('en-US');
 
         // Custom Thai Date Formatter for text (DD/MM/YYYY -> 27 ก.ย. 2569) without time
         function formatThaiDateOnly(dateString) {
@@ -382,9 +371,10 @@
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             
-            let url = '/api/reports';
+            let dtUrl = '/api/sales/dt';
             if (startDate && endDate) {
                 url += `?start_date=${startDate}&end_date=${endDate}`;
+                dtUrl += `?start_date=${startDate}&end_date=${endDate}`;
                 document.getElementById('salesTableTitle').innerText = `ประวัติการขาย (${formatThaiDateOnly(startDate)} ถึง ${formatThaiDateOnly(endDate)})`;
             } else {
                 document.getElementById('salesTableTitle').innerText = `ประวัติการขายล่าสุด`;
@@ -392,6 +382,11 @@
 
             const res = await fetch(url);
             const data = await res.json();
+            
+            // Reload DataTable
+            if (salesDt) {
+                salesDt.ajax.url(dtUrl).load();
+            }
             
             // Update Stats
             const rawRevenue = parseFloat(data.total_revenue) || 0;
@@ -402,7 +397,7 @@
             const adjustment = parseFloat(data.total_adjustment) || 0;
             const netProfit = revenue - cost - expenses + adjustment;
 
-            // Note: The user requested NO ฿ symbol and use fmt() which uses commas and 2 decimals.
+            // Note: The user requested NO  symbol and use fmt() which uses commas and 2 decimals.
             document.getElementById('valRevenue').innerText = fmt(rawRevenue);
             document.getElementById('valConsignmentRevenue').innerText = fmt(brewedTotal);
             document.getElementById('valCostOfGoods').innerText = fmt(cost);
@@ -485,7 +480,7 @@
                         totalItemAmount += parseFloat(item.total_amount);
                         let row = `<tr>
                             <td class="fw-bold text-dark">${escapeHTML(item.name)}</td>
-                            <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${item.total_qty}</span></td>
+                            <td class="text-center"><span class="badge bg-primary rounded-pill px-3">${fmtQty(item.total_qty)}</span></td>
                             <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
                         </tr>`;
                         itemTbody.innerHTML += row;
@@ -501,7 +496,7 @@
                         totalBrewedAmount += parseFloat(item.total_amount);
                         let row = `<tr>
                             <td class="fw-bold text-dark">${escapeHTML(item.name)}</td>
-                            <td class="text-center"><span class="badge bg-warning text-dark rounded-pill px-3">${item.total_qty}</span></td>
+                            <td class="text-center"><span class="badge bg-warning text-dark rounded-pill px-3">${fmtQty(item.total_qty)}</span></td>
                             <td class="text-end fw-bold text-success">${fmt(item.total_amount)}</td>
                         </tr>`;
                         brewedTbody.innerHTML += row;
@@ -521,7 +516,7 @@
                 itemTfoot.innerHTML = `
                     <tr class="fs-5">
                         <td class="text-end text-dark fw-bold">รวมทั้งหมด:</td>
-                        <td class="text-center fw-bold text-primary">${totalItemQty}</td>
+                        <td class="text-center fw-bold text-primary">${fmtQty(totalItemQty)}</td>
                         <td class="text-end fw-bold text-success">${fmt(totalItemAmount)}</td>
                     </tr>
                 `;
@@ -537,134 +532,97 @@
                 brewedTfoot.innerHTML = `
                     <tr>
                         <td class="text-end text-muted small">ยอดขายปกติ:</td>
-                        <td class="text-center fw-bold text-primary">${normalQty}</td>
+                        <td class="text-center fw-bold text-primary">${fmtQty(normalQty)}</td>
                         <td></td>
                     </tr>
                     <tr>
                         <td class="text-end text-muted small">แลกด้วยแต้มสะสม:</td>
-                        <td class="text-center fw-bold text-danger">${freeQty}</td>
+                        <td class="text-center fw-bold text-danger">${fmtQty(freeQty)}</td>
                         <td></td>
                     </tr>
                     <tr class="fs-5">
                         <td class="text-end text-dark">รวมทั้งหมด:</td>
-                        <td class="text-center fw-bold text-dark">${totalBrewedQty} แก้ว</td>
+                        <td class="text-center fw-bold text-dark">${fmtQty(totalBrewedQty)} แก้ว</td>
                         <td class="text-end fw-bold text-success">${fmt(totalBrewedAmount)}</td>
                     </tr>
                 `;
             }
             
             
-            // Render Recent Sales with Pagination
-            allRecentSales = data.recent_sales || [];
-            currentSalesPage = 1;
-            renderRecentSales();
-        }
-
-        function changeSalesPageSize() {
-            salesPageSize = parseInt(document.getElementById('salesPageSize').value);
-            currentSalesPage = 1;
-            renderRecentSales();
-        }
-
-        function goToSalesPage(page) {
-            currentSalesPage = page;
-            renderRecentSales();
-        }
-
-        function renderRecentSales() {
-            const tbody = document.getElementById('salesTable');
-            tbody.innerHTML = '';
-            let rowsHtml = '';
-            
-            if (allRecentSales.length > 0) {
-                const totalPages = Math.ceil(allRecentSales.length / salesPageSize);
-                if (currentSalesPage > totalPages) currentSalesPage = totalPages;
-                
-                const startIdx = (currentSalesPage - 1) * salesPageSize;
-                const endIdx = startIdx + salesPageSize;
-                const pageData = allRecentSales.slice(startIdx, endIdx);
-
-                pageData.forEach(s => {
-                    const d = formatThaiDate(s.timestamp);
-                    const isVoided = s.payment_status === 'ยกเลิกบิล';
-                    let statusText = s.payment_method;
-                    let badgeColor = 'secondary';
-                    
-                    if (isVoided) {
-                        statusText = 'ยกเลิกบิล';
-                        badgeColor = 'danger';
-                    } else if (s.payment_status === 'Unpaid') {
-                        statusText = 'ค้างชำระ';
-                        badgeColor = 'danger';
-                    } else if (s.payment_status === 'ชำระบิลค้างชำระ') {
-                        statusText = 'รับชำระบิลค้าง';
-                        badgeColor = 'primary';
-                    } else {
-                        if (s.payment_method === 'Cash') {
-                            statusText = 'เงินสด';
-                            badgeColor = 'success';
-                        }
-                        else if (s.payment_method === 'PromptPay') {
-                            statusText = 'เงินโอน';
-                            badgeColor = 'info text-dark';
-                        }
-                        else if (s.payment_method === 'Split') {
-                            statusText = 'แยกชำระ';
-                            badgeColor = 'warning text-dark';
-                        }
-                        else if (s.payment_method === 'Credit Card') {
-                            statusText = 'บัตรเครดิต';
-                            badgeColor = 'warning text-dark';
-                        }
-                    }
-                    
-                    const rowClass = isVoided ? 'text-decoration-line-through text-muted' : '';
-
-                    let row = `<tr class="${rowClass}">
-                        <td>
-                            <small class="text-muted fw-bold">#INV-${String(s.id).padStart(5, '0')}</small>
-                            ${s.notes ? `<br><small class="text-info fw-bold" style="font-size:0.75rem;">${escapeHTML(s.notes)}</small>` : ''}
-                        </td>
-                        <td>${d}</td>
-                        <td><span class="badge bg-${badgeColor}">${statusText}</span></td>
-                        <td class="text-end fw-bold ${isVoided ? 'text-muted' : 'text-success'}">${fmt(s.total_amount)}</td>
-                        <td class="text-center">
-                            <a href="/receipt/${s.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️</a>
-                            ${!isVoided ? `<button onclick="voidSale(${s.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌</button>` : ''}
-                        </td>
-                    </tr>`;
-                    rowsHtml += row;
-                });
-                if(rowsHtml) tbody.innerHTML = rowsHtml;
-
-                document.getElementById('salesPageInfo').innerText = `แสดง ${startIdx + 1} - ${Math.min(endIdx, allRecentSales.length)} จากทั้งหมด ${allRecentSales.length} รายการ`;
-                renderPaginationUI(totalPages);
-            } else {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">ไม่พบประวัติการขายในช่วงเวลานี้</td></tr>`;
-                document.getElementById('salesPageInfo').innerText = '';
-                document.getElementById('salesPagination').innerHTML = '';
+            // Reload DataTable instead of manual pagination
+            if (salesDt) {
+                salesDt.ajax.url(dtUrl).load();
             }
         }
 
-        function renderPaginationUI(totalPages) {
-            const ul = document.getElementById('salesPagination');
-            ul.innerHTML = '';
-            
-            if (totalPages <= 1) return;
-
-            // Prev Button
-            ul.innerHTML += `
-                <li class="page-item ${currentSalesPage === 1 ? 'disabled' : ''}">
-                    <button class="page-link" onclick="goToSalesPage(${currentSalesPage - 1})">ย้อนกลับ</button>
-                </li>
-            `;
-            
-            // Next Button
-            ul.innerHTML += `
-                <li class="page-item ${currentSalesPage === totalPages ? 'disabled' : ''}">
-                    <button class="page-link" onclick="goToSalesPage(${currentSalesPage + 1})">ถัดไป</button>
-                </li>
-            `;
+        function initSalesDataTable() {
+            salesDt = $('#recentSalesDt').DataTable({
+                serverSide: true,
+                processing: true,
+                ajax: '/api/sales/dt',
+                order: [[1, 'desc']], // sort by timestamp desc by default
+                columns: [
+                    {
+                        data: 'invoice_no',
+                        render: function(data, type, row) {
+                            let isVoided = row.payment_status === 'ยกเลิกบิล';
+                            let idStr = String(row.id).padStart(5, '0');
+                            let notesHtml = row.notes ? `<br><small class="text-info fw-bold" style="font-size:0.75rem;">${escapeHTML(row.notes)}</small>` : '';
+                            return `<span class="${isVoided ? 'text-decoration-line-through text-muted' : ''}">
+                                <small class="text-muted fw-bold">#INV-${idStr}</small>${notesHtml}
+                            </span>`;
+                        }
+                    },
+                    {
+                        data: 'timestamp',
+                        render: function(data, type, row) {
+                            return `<span class="${row.payment_status === 'ยกเลิกบิล' ? 'text-decoration-line-through text-muted' : ''}">${formatThaiDate(data)}</span>`;
+                        }
+                    },
+                    {
+                        data: 'payment_status',
+                        render: function(data, type, row) {
+                            let isVoided = data === 'ยกเลิกบิล';
+                            let statusText = row.payment_method;
+                            let badgeColor = 'secondary';
+                            
+                            if (isVoided) { statusText = 'ยกเลิกบิล'; badgeColor = 'danger'; }
+                            else if (row.payment_status === 'Unpaid') { statusText = 'ค้างชำระ'; badgeColor = 'danger'; }
+                            else if (row.payment_status === 'ชำระบิลค้างชำระ') { statusText = 'รับชำระบิลค้าง'; badgeColor = 'primary'; }
+                            else {
+                                if (row.payment_method === 'Cash') { statusText = 'เงินสด'; badgeColor = 'success'; }
+                                else if (row.payment_method === 'PromptPay') { statusText = 'เงินโอน'; badgeColor = 'info text-dark'; }
+                                else if (row.payment_method === 'Split') { statusText = 'แยกชำระ'; badgeColor = 'warning text-dark'; }
+                                else if (row.payment_method === 'Credit Card') { statusText = 'บัตรเครดิต'; badgeColor = 'warning text-dark'; }
+                            }
+                            return `<span class="badge bg-${badgeColor}">${statusText}</span>`;
+                        }
+                    },
+                    {
+                        data: 'total_amount',
+                        className: 'text-end fw-bold',
+                        render: function(data, type, row) {
+                            let isVoided = row.payment_status === 'ยกเลิกบิล';
+                            return `<span class="${isVoided ? 'text-muted text-decoration-line-through' : 'text-success'}">${fmt(data)}</span>`;
+                        }
+                    },
+                    {
+                        data: null,
+                        className: 'text-center',
+                        orderable: false,
+                        searchable: false,
+                        render: function(data, type, row) {
+                            let isVoided = row.payment_status === 'ยกเลิกบิล';
+                            let printBtn = `<a href="/receipt/${row.id}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill mb-1">🖨️</a>`;
+                            let voidBtn = !isVoided ? `<button onclick="voidSale(${row.id})" class="btn btn-sm btn-outline-danger rounded-pill mb-1">❌</button>` : '';
+                            return printBtn + ' ' + voidBtn;
+                        }
+                    }
+                ],
+                language: {
+                    url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/th.json"
+                }
+            });
         }
 
         async function voidSale(id) {
@@ -799,7 +757,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
 
         function syncGoogleSheets() {

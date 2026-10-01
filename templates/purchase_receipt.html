@@ -148,22 +148,22 @@
             <tbody>
                 {% for item in items %}
                 <tr>
-                    <td>{{ item.name }} <br><small style="color: #777;">(ทุน: {{ "%.2f" | format(item.cost_price) }})</small></td>
+                    <td>{{ item.name }} <br><small style="color: #777;">(ทุน: {{ "{:,.2f}".format(item.cost_price) }})</small></td>
                     <td class="text-center" style="vertical-align: top;">{{ item.qty }}</td>
-                    <td class="text-right" style="vertical-align: top;">{{ "%.2f" | format(item.cost_price * item.qty) }}</td>
+                    <td class="text-right" style="vertical-align: top;">{{ "{:,.2f}".format(item.cost_price * item.qty) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
         <div class="text-right" style="font-size: 14px;">
-            ยอดรวมก่อนภาษี: {{ "%.2f" | format(purchase.subtotal) }}
+            ยอดรวมก่อนภาษี: {{ "{:,.2f}".format(purchase.subtotal) }}
         </div>
         <div class="text-right" style="font-size: 14px;">
-            ภาษีมูลค่าเพิ่ม (VAT 7%): {{ "%.2f" | format(purchase.vat_amount) }}
+            ภาษีมูลค่าเพิ่ม (VAT 7%): {{ "{:,.2f}".format(purchase.vat_amount) }}
         </div>
         <div class="text-right fw-bold grand-total">
-            ยอดรวมสุทธิ: {{ "%.2f" | format(purchase.total_amount) }}
+            ยอดรวมสุทธิ: {{ "{:,.2f}".format(purchase.total_amount) }}
         </div>
 
         <button class="print-btn" onclick="window.print()">🖨️ สั่งพิมพ์ใบสั่งซื้อ</button>
@@ -269,7 +269,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 

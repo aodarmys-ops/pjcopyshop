@@ -138,6 +138,7 @@
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">ประเภท</label>
                             <select class="form-select" id="pType">
+                                <option value="Retail">สินค้าทั่วไป (Retail)</option>
                                 <option value="Service">งานบริการ</option>
                                 <option value="Stationery">เครื่องเขียน</option>
                                 <option value="Gift shop">กิ๊ฟช๊อป</option>
@@ -162,6 +163,20 @@
                             <div class="col-4 mb-3">
                                 <label class="form-label text-muted small fw-bold">สี</label>
                                 <input type="text" class="form-control" id="pColor" placeholder="-">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-4 mb-3">
+                                <label class="form-label text-muted small fw-bold">หน่วยสต๊อก (Base)</label>
+                                <input type="text" class="form-control" id="pBaseUnit" placeholder="เช่น แผ่น" value="ชิ้น">
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label class="form-label text-muted small fw-bold">หน่วยสั่งซื้อ</label>
+                                <input type="text" class="form-control" id="pPurchaseUnit" placeholder="เช่น ลัง">
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label class="form-label text-muted small fw-bold">ตัวคูณแปลงหน่วย</label>
+                                <input type="number" step="0.01" class="form-control" id="pConversionRate" placeholder="1 ลัง = ?" value="1">
                             </div>
                         </div>
                         <div class="mb-3">
@@ -221,42 +236,78 @@
     </div>
 
     <script>
-        async function fetchProducts() {
-            const res = await fetch('/api/products');
-            const data = await res.json();
-            const tbody = document.getElementById('productTable');
-            tbody.innerHTML = '';
-            let rowsHtml = '';
-            data.forEach(p => {
-                let row = `<tr>
-                    <td><small class="text-muted">${escapeHTML(p.barcode || p.id)}</small></td>
-                    <td class="fw-bold">${escapeHTML(p.name)}</td>
-                    <td><small class="text-muted">${escapeHTML(p.brand || '-')} / ${escapeHTML(p.model || '-')} / ${escapeHTML(p.color || '-')}</small></td>
-                    <td><span class="badge rounded-pill bg-${p.type==='Retail'?'primary':(p.type==='Brewed Drink'?'warning text-dark':'secondary')}">${escapeHTML(p.type)}</span></td>
-                    <td>
-                        <span class="text-muted small">ทุน: ${formatMoney(p.cost)}</span><br>
-                        ${formatMoney(p.price)}
-                    </td>
-                    <td>
-                        <span class="${p.stock_qty <= p.reorder_level && p.type === 'Retail' ? 'text-danger fw-bold' : 'text-success fw-bold'}">
-                            ${p.type === 'Service' ? '-' : p.stock_qty + ' ชิ้น'}
-                        </span>
-                    </td>
-                    <td class="text-center text-nowrap">
-                        <button class="btn btn-sm btn-outline-primary rounded-circle mb-1" title="แก้ไขข้อมูล" onclick="editProduct('${encodeURIComponent(JSON.stringify(p))}')">✏️</button>
-                        ${(p.type === 'Retail' || p.type === 'Brewed Drink') ? `<button class="btn btn-sm btn-success rounded-circle mb-1" title="เพิ่มสต๊อก" onclick="addStock(${p.id}, '${escapeHTML(p.name)}')">➕</button>` : ''}
-                        ${(p.type !== 'Service') ? `<button class="btn btn-sm btn-outline-warning rounded-circle mb-1" title="ตัดชำรุด/เสียหาย" onclick="openWriteoffModal(${p.id}, '${escapeHTML(p.name)}', ${p.stock_qty})">✂️</button>` : ''}
-                        <button class="btn btn-sm btn-outline-danger rounded-circle mb-1" title="ลบสินค้า" onclick="deleteProduct(${p.id}, '${escapeHTML(p.name)}')">🗑️</button>
-                    </td>
-                </tr>`;
-                rowsHtml += row;
-            });
-            
+        function fetchProducts() {
             if ($.fn.DataTable.isDataTable('#productDataTable')) {
-                $('#productDataTable').DataTable().destroy();
+                $('#productDataTable').DataTable().ajax.reload();
+                return;
             }
-            if(rowsHtml) tbody.innerHTML = rowsHtml;
+            
             $('#productDataTable').DataTable({
+                serverSide: true,
+                processing: true,
+                ajax: {
+                    url: '/api/products/dt',
+                    type: 'GET'
+                },
+                columns: [
+                    { 
+                        data: 'barcode', 
+                        render: function(data, type, row) { 
+                            return `<small class="text-muted">${escapeHTML(data || row.id)}</small>`; 
+                        } 
+                    },
+                    { 
+                        data: 'name', 
+                        render: function(data, type, row) { 
+                            return `<span class="fw-bold">${escapeHTML(data)}</span>`; 
+                        } 
+                    },
+                    { 
+                        data: 'brand', 
+                        render: function(data, type, row) { 
+                            return `<small class="text-muted">${escapeHTML(row.brand || '-')} / ${escapeHTML(row.model || '-')} / ${escapeHTML(row.color || '-')}</small>`; 
+                        } 
+                    },
+                    { 
+                        data: 'type', 
+                        render: function(data) { 
+                            let badgeClass = data === 'Retail' ? 'primary' : (data === 'Brewed Drink' ? 'warning text-dark' : 'secondary');
+                            return `<span class="badge rounded-pill bg-${badgeClass}">${escapeHTML(data)}</span>`; 
+                        } 
+                    },
+                    { 
+                        data: 'price', 
+                        render: function(data, type, row) { 
+                            return `<span class="text-muted small">ทุน: ${formatMoney(row.cost)}</span><br>${formatMoney(data)}`; 
+                        } 
+                    },
+                    { 
+                        data: 'stock_qty', 
+                        render: function(data, type, row) { 
+                            let txtClass = data <= row.reorder_level && row.type === 'Retail' ? 'text-danger fw-bold' : 'text-success fw-bold';
+                            return `<span class="${txtClass}">${row.type === 'Service' ? '-' : data + ' ชิ้น'}</span>`; 
+                        } 
+                    },
+                    { 
+                        data: null, 
+                        orderable: false, 
+                        className: "text-center text-nowrap",
+                        render: function(data, type, row) {
+                            let jsonStr = encodeURIComponent(JSON.stringify(row));
+                            let nameStr = escapeHTML(row.name);
+                            let btns = `<button class="btn btn-sm btn-outline-primary rounded-circle mb-1" title="แก้ไขข้อมูล" onclick="editProduct('${jsonStr}')">✏️</button> `;
+                            if (row.type === 'Retail' || row.type === 'Brewed Drink') {
+                                btns += `<button class="btn btn-sm btn-success rounded-circle mb-1" title="เพิ่มสต๊อก" onclick="addStock(${row.id}, '${nameStr}')">➕</button> `;
+                            }
+                            if (row.type !== 'Service') {
+                                btns += `<button class="btn btn-sm btn-outline-warning rounded-circle mb-1" title="ตัดชำรุด/เสียหาย" onclick="openWriteoffModal(${row.id}, '${nameStr}', ${row.stock_qty})">✂️</button> `;
+                            }
+                            btns += `<button class="btn btn-sm btn-outline-info rounded-circle mb-1" title="จัดการ BOM" onclick="openBomModal(${row.id}, '${nameStr}')">📦</button> `;
+                            btns += `<button class="btn btn-sm btn-outline-danger rounded-circle mb-1" title="ลบสินค้า" onclick="deleteProduct(${row.id}, '${nameStr}')">🗑️</button>`;
+                            return btns;
+                        }
+                    }
+                ],
                 pagingType: 'full_numbers',
                 language: {
                     paginate: { first: 'แรกสุด', previous: 'ก่อนหน้า', next: 'ถัดไป', last: 'ท้ายสุด' },
@@ -264,7 +315,8 @@
                     zeroRecords: "ไม่พบข้อมูล",
                     info: "แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ",
                     infoEmpty: "ไม่มีข้อมูล",
-                    search: "ค้นหา:"
+                    search: "ค้นหา:",
+                    processing: "กำลังโหลดข้อมูล..."
                 }
             });
         }
@@ -303,6 +355,9 @@
             document.getElementById('pPrice').value = p.price;
             document.getElementById('pStock').value = p.stock_qty;
             document.getElementById('pReorder').value = p.reorder_level;
+            document.getElementById('pBaseUnit').value = p.base_unit || 'ชิ้น';
+            document.getElementById('pPurchaseUnit').value = p.purchase_unit || '';
+            document.getElementById('pConversionRate').value = p.conversion_rate || 1.0;
             
             document.getElementById('formTitle').innerText = '✏️ แก้ไขข้อมูลสินค้า';
             document.getElementById('formSubmitBtn').innerText = 'อัปเดตข้อมูล';
@@ -334,7 +389,10 @@
                 cost: parseFloat(document.getElementById('pCost').value) || 0,
                 price: parseFloat(document.getElementById('pPrice').value),
                 stock_qty: parseInt(document.getElementById('pStock').value) || 0,
-                reorder_level: parseInt(document.getElementById('pReorder').value) || 0
+                reorder_level: parseInt(document.getElementById('pReorder').value) || 0,
+                base_unit: document.getElementById('pBaseUnit').value,
+                purchase_unit: document.getElementById('pPurchaseUnit').value,
+                conversion_rate: parseFloat(document.getElementById('pConversionRate').value) || 1.0
             };
             
             if (id) {
@@ -579,7 +637,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 
@@ -662,6 +720,53 @@
         </div>
     </div>
 
+    <!-- BOM Management Modal -->
+    <div class="modal fade" id="bomModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">📦 จัดการสูตรส่วนผสม (BOM)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6 class="fw-bold text-primary mb-3">สินค้า: <span id="bomProductName"></span></h6>
+                    <input type="hidden" id="bomProductId">
+                    
+                    <div class="card p-3 mb-3 bg-light border-0">
+                        <form id="addBomForm" class="row align-items-end">
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label small fw-bold">วัตถุดิบที่ใช้</label>
+                                <select class="form-select" id="bomMaterialId" required></select>
+                            </div>
+                            <div class="col-md-4 mb-2">
+                                <label class="form-label small fw-bold">จำนวนที่ใช้ต่อ 1 หน่วย</label>
+                                <input type="number" step="0.01" min="0.01" class="form-control" id="bomQty" required>
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <button type="submit" class="btn btn-success w-100 fw-bold">➕ เพิ่ม</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table align-middle table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>วัตถุดิบ</th>
+                                    <th>จำนวนที่ใช้</th>
+                                    <th>ต้นทุน/หน่วย (โดยประมาณ)</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bomTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- Global Barcode Scanner Fix -->
@@ -724,6 +829,94 @@
         }, true);
     })();
     </script>
+    <script>
+        // Add BOM Logic
+        let bomModal = null;
+        window.addEventListener('DOMContentLoaded', () => {
+            bomModal = new bootstrap.Modal(document.getElementById('bomModal'));
+        });
 
+        async function openBomModal(productId, productName) {
+            document.getElementById('bomProductId').value = productId;
+            document.getElementById('bomProductName').innerText = productName;
+            bomModal.show();
+            
+            // Fetch all products for dropdown
+            const pRes = await fetch('/api/products');
+            const products = await pRes.json();
+            const select = document.getElementById('bomMaterialId');
+            select.innerHTML = '<option value="">-- เลือกวัตถุดิบ --</option>';
+            products.forEach(p => {
+                if(p.id !== productId) { // don't allow self reference
+                    select.innerHTML += `<option value="${p.id}">${escapeHTML(p.name)} (ทุน: ${formatMoney(p.cost)})</option>`;
+                }
+            });
+            
+            fetchBomList(productId);
+        }
+        
+        async function fetchBomList(productId) {
+            const res = await fetch(`/api/bom/${productId}`);
+            const data = await res.json();
+            const tbody = document.getElementById('bomTableBody');
+            tbody.innerHTML = '';
+            
+            let totalCost = 0;
+            data.forEach(b => {
+                const costEstimate = b.qty * b.material_cost;
+                totalCost += costEstimate;
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="fw-bold">${escapeHTML(b.material_name)}</td>
+                        <td>${b.qty}</td>
+                        <td class="text-muted">~${formatMoney(costEstimate)}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-danger rounded-circle shadow-sm" onclick="deleteBom(${b.id}, ${productId})">❌</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            if(data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">ยังไม่มีสูตรส่วนผสม</td></tr>`;
+            } else {
+                tbody.innerHTML += `
+                    <tr class="table-light fw-bold text-danger">
+                        <td colspan="2" class="text-end">ต้นทุนรวมประเมิน:</td>
+                        <td>~${formatMoney(totalCost)} บาท</td>
+                        <td></td>
+                    </tr>
+                `;
+            }
+        }
+
+        document.getElementById('addBomForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                product_id: parseInt(document.getElementById('bomProductId').value),
+                material_id: parseInt(document.getElementById('bomMaterialId').value),
+                qty: parseFloat(document.getElementById('bomQty').value)
+            };
+            const res = await fetch('/api/bom', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if(res.ok) {
+                document.getElementById('bomMaterialId').value = '';
+                document.getElementById('bomQty').value = '';
+                fetchBomList(payload.product_id);
+            } else {
+                const err = await res.json();
+                alert(err.message || 'Error saving BOM');
+            }
+        });
+
+        async function deleteBom(bomId, productId) {
+            if(!confirm('ลบส่วนผสมนี้?')) return;
+            const res = await fetch(`/api/bom/${bomId}`, { method: 'DELETE' });
+            if(res.ok) fetchBomList(productId);
+            else alert('Error deleting BOM');
+        }
+    </script>
 </body>
 </html>

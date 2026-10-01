@@ -110,33 +110,35 @@ def sync_data(spreadsheet_id=SPREADSHEET_ID):
         SELECT 
             s.id, s.timestamp, COALESCE(s.invoice_no, '-'), COALESCE(c.name, 'ลูกค้าทั่วไป'),
             p.name, p.type, si.qty, si.price, (si.qty * si.price) as total_price,
-            p.cost, (si.qty * (si.price - p.cost)) as profit, s.payment_method, s.payment_status
+            si.cost_price, (si.qty * (si.price - si.cost_price)) as profit, s.payment_method, s.split_cash, s.split_transfer, s.payment_status
         FROM Sale_Items si
         JOIN Sales s ON si.sale_id = s.id
         JOIN Products_Services p ON si.product_id = p.id
         LEFT JOIN Customers c ON s.customer_id = c.id
+        WHERE s.timestamp >= datetime('now', '-90 days')
         ORDER BY s.id DESC
     ''')
     sales_rows = c.fetchall()
-    sales_data = [['รหัสบิล', 'วัน-เวลา', 'เลขที่ใบเสร็จ', 'ลูกค้า', 'สินค้า/บริการ', 'ประเภท', 'จำนวน', 'ราคาขาย/หน่วย', 'ยอดรวม', 'ต้นทุน/หน่วย', 'กำไร', 'วิธีชำระ', 'สถานะบิล']]
-    for r in sales_rows: sales_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12]])
+    sales_data = [['รหัสบิล', 'วัน-เวลา', 'เลขที่ใบเสร็จ', 'ลูกค้า', 'สินค้า/บริการ', 'ประเภท', 'จำนวน', 'ราคาขาย/หน่วย', 'ยอดรวม', 'ต้นทุน/หน่วย', 'กำไร', 'วิธีชำระ', 'เงินสด (Split)', 'เงินโอน (Split)', 'สถานะบิล']]
+    for r in sales_rows: sales_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14]])
 
     # 2. Raw_Stock
     c.execute('''
         SELECT id, COALESCE(barcode, ''), name, type, TRIM(COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(color,'')),
                cost, price, stock_qty, reorder_level,
-               CASE WHEN type != 'Product' THEN 'บริการ' WHEN stock_qty <= 0 THEN 'สินค้าหมด' WHEN stock_qty <= reorder_level THEN 'ใกล้หมด' ELSE 'ปกติ' END
+               CASE WHEN type != 'Product' THEN 'บริการ' WHEN stock_qty <= 0 THEN 'สินค้าหมด' WHEN stock_qty <= reorder_level THEN 'ใกล้หมด' ELSE 'ปกติ' END,
+               COALESCE(base_unit, 'ชิ้น'), COALESCE(purchase_unit, ''), COALESCE(conversion_rate, 1)
         FROM Products_Services WHERE is_active = 1 ORDER BY type, name
     ''')
     stock_rows = c.fetchall()
-    stock_data = [['รหัสสินค้า', 'บาร์โค้ด', 'ชื่อสินค้า/บริการ', 'หมวดหมู่', 'คุณลักษณะ', 'ต้นทุน', 'ราคาขาย', 'คงเหลือ', 'จุดสั่งซื้อ', 'สถานะสต็อก']]
-    for r in stock_rows: stock_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]])
+    stock_data = [['รหัสสินค้า', 'บาร์โค้ด', 'ชื่อสินค้า/บริการ', 'หมวดหมู่', 'คุณลักษณะ', 'ต้นทุน', 'ราคาขาย', 'คงเหลือ', 'จุดสั่งซื้อ', 'สถานะสต็อก', 'หน่วยนับ(Base)', 'หน่วยซื้อ', 'ตัวคูณ']]
+    for r in stock_rows: stock_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12]])
 
     # 3. Raw_Jobs
-    c.execute("SELECT id, timestamp, COALESCE(customer_name, '-'), COALESCE(details, '-'), qty, deposit, status FROM Job_Orders ORDER BY id DESC")
+    c.execute("SELECT id, timestamp, COALESCE(customer_name, '-'), COALESCE(details, '-'), qty, price, deposit, status, due_date FROM Job_Orders WHERE timestamp >= datetime('now', '-90 days') OR status NOT IN ('Completed', 'เสร็จแล้ว', 'ส่งมอบแล้ว', 'ยกเลิก') ORDER BY id DESC")
     job_rows = c.fetchall()
-    job_data = [['รหัสงาน', 'วันที่สั่ง', 'ชื่อลูกค้า', 'รายละเอียดงาน', 'จำนวน', 'เงินมัดจำ', 'สถานะงาน']]
-    for r in job_rows: job_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6]])
+    job_data = [['รหัสงาน', 'วันที่สั่ง', 'ชื่อลูกค้า', 'รายละเอียดงาน', 'จำนวน', 'ราคาประเมิน', 'เงินมัดจำ', 'สถานะงาน', 'กำหนดส่ง']]
+    for r in job_rows: job_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7], str(r[8] or '-')])
 
     # 4. Raw_Debtors
     c.execute('''
@@ -148,7 +150,7 @@ def sync_data(spreadsheet_id=SPREADSHEET_ID):
     for r in debtor_rows: debtor_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7], r[8]])
 
     # 5. Raw_Expenses (NEW)
-    c.execute("SELECT id, timestamp, description, amount, expense_type, payment_method FROM Expenses ORDER BY timestamp DESC")
+    c.execute("SELECT id, timestamp, description, amount, expense_type, payment_method FROM Expenses WHERE timestamp >= datetime('now', '-90 days') ORDER BY timestamp DESC")
     exp_rows = c.fetchall()
     exp_data = [['รหัส', 'วันที่', 'รายละเอียด', 'ยอดเงิน', 'ประเภท', 'วิธีชำระ']]
     for r in exp_rows: exp_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5]])
@@ -159,14 +161,14 @@ def sync_data(spreadsheet_id=SPREADSHEET_ID):
         FROM Stock_Count_Items c
         JOIN Stock_Counts sc ON c.count_id = sc.id
         JOIN Products_Services p ON c.product_id = p.id
-        WHERE c.variance != 0 ORDER BY sc.count_date DESC
+        WHERE c.variance != 0 AND sc.count_date >= datetime('now', '-90 days') ORDER BY sc.count_date DESC
     ''')
     adj_rows = c.fetchall()
     adj_data = [['รหัสอ้างอิง', 'วันที่', 'ชื่อสินค้า', 'สต๊อกระบบ', 'นับจริง', 'ส่วนต่าง', 'ต้นทุน/ชิ้น', 'ยอดเงินปรับปรุง']]
     for r in adj_rows: adj_data.append([r[0], str(r[1]), r[2], r[3], r[4], r[5], r[6], r[7]])
 
     # 7. Raw_Purchases (NEW)
-    c.execute("SELECT id, timestamp, supplier_name, total_amount, payment_method FROM Purchases ORDER BY timestamp DESC")
+    c.execute("SELECT id, timestamp, supplier_name, total_amount, payment_method FROM Purchases WHERE timestamp >= datetime('now', '-90 days') ORDER BY timestamp DESC")
     pur_rows = c.fetchall()
     pur_data = [['รหัส', 'วันที่', 'ซัพพลายเออร์', 'ยอดเงิน', 'วิธีชำระ']]
     for r in pur_rows: pur_data.append([r[0], str(r[1]), r[2], r[3], r[4]])

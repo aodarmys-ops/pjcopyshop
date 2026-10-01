@@ -14,3 +14,6 @@ generator_summary.txt
 service_account.json
 *.json_backup
 credentials.json
+token.json
+e2e_test_results.json
+e2e_run_log.txt

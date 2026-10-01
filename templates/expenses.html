@@ -198,6 +198,49 @@
         </div>
     </div>
 
+    <!-- Edit Expense Modal -->
+    <div class="modal fade" id="editExpenseModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold text-danger">✏️ แก้ไขรายจ่าย</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editExpenseForm">
+                        <input type="hidden" id="editEId">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">รายการ / คำอธิบาย</label>
+                            <input type="text" class="form-control" id="editEDesc" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">จำนวนเงิน (บาท)</label>
+                            <input type="number" step="0.01" class="form-control" id="editEAmount" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ประเภท</label>
+                            <select class="form-select" id="editEType">
+                                <option value="OPEX">รายจ่ายร้าน (OPEX)</option>
+                                <option value="Owner Draw">ถอนใช้ส่วนตัว (ไม่หักกำไร)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ช่องทางชำระ</label>
+                            <select class="form-select" id="editEPaymentMethod">
+                                <option value="Cash">เงินสด</option>
+                                <option value="Transfer">เงินโอน</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-danger fw-bold" onclick="submitEditExpense()">บันทึกการแก้ไข</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Custom Thai Date Formatter for text (DD/MM/YYYY -> 27 ก.ย. 2569) without time
         function formatThaiDateOnly(dateString) {
@@ -225,51 +268,85 @@
             return `${day} ${monthStr} ${year} ${hours}:${minutes}`;
         }
 
+        let expenseDt;
         async function fetchExpenses() {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             
-            let url = '/api/expenses';
+            let dtUrl = '/api/expenses/dt';
             if (startDate && endDate) {
-                url += `?start_date=${startDate}&end_date=${endDate}`;
+                dtUrl += `?start_date=${startDate}&end_date=${endDate}`;
                 document.getElementById('expensesTableTitle').innerText = `ประวัติรายจ่าย (${formatThaiDateOnly(startDate)} ถึง ${formatThaiDateOnly(endDate)})`;
             } else {
                 document.getElementById('expensesTableTitle').innerText = `ประวัติรายจ่ายร้านทั้งหมด`;
             }
-
-            const res = await fetch(url);
-            const data = await res.json();
-            const tbody = document.getElementById('expenseTable');
-            tbody.innerHTML = '';
-            let rowsHtml = '';
-            let total = 0;
             
-            data.forEach(e => {
-                total += e.amount;
-                const d = formatThaiDate(e.timestamp);
-                
-                // Parse PO ID from description
-                let actionBtn = `<button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="alert('รายละเอียด:\\n' + '${escapeHTML(e.description)}')">📄 รายละเอียด</button>`;
-                const poMatch = e.description.match(/\(PO #(\d+)\)/);
-                if (poMatch) {
-                    const poId = poMatch[1];
-                    actionBtn = `<a href="/purchase-receipt/${poId}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">📄 ดูใบสั่งซื้อ</a>`;
-                }
-
-                let row = `<tr>
-                    <td><small class="text-muted">${d}</small></td>
-                    <td class="fw-bold">${escapeHTML(e.description)}</td>
-                    <td><span class="badge bg-${e.expense_type === 'OPEX' ? 'warning text-dark' : 'danger'}">${escapeHTML(e.expense_type || 'OPEX')}</span></td>
-                    <td><span class="badge bg-secondary">${escapeHTML(e.payment_method || 'Cash')}</span></td>
-                    <td class="text-end fw-bold text-danger">${formatMoney(e.amount)}</td>
-                    <td class="text-center">${actionBtn}</td>
-                </tr>`;
-                rowsHtml += row;
-            });
-            
-            
-            tbody.innerHTML = rowsHtml;
-            document.getElementById('totalExpense').innerText = `${formatMoney(total)}`;
+            if (!expenseDt) {
+                expenseDt = $('#expensesDataTable').DataTable({
+                    serverSide: true,
+                    processing: true,
+                    ajax: dtUrl,
+                    order: [[0, 'desc']], // sort by timestamp desc by default
+                    columns: [
+                        {
+                            data: 'timestamp',
+                            render: function(data) {
+                                return `<small class="text-muted">${formatThaiDate(data)}</small>`;
+                            }
+                        },
+                        {
+                            data: 'description',
+                            render: function(data) { return `<span class="fw-bold">${escapeHTML(data)}</span>`; }
+                        },
+                        {
+                            data: 'expense_type',
+                            render: function(data) {
+                                let t = data || 'OPEX';
+                                let c = t === 'OPEX' ? 'warning text-dark' : 'danger';
+                                return `<span class="badge bg-${c}">${escapeHTML(t)}</span>`;
+                            }
+                        },
+                        {
+                            data: 'payment_method',
+                            render: function(data) {
+                                return `<span class="badge bg-secondary">${escapeHTML(data || 'Cash')}</span>`;
+                            }
+                        },
+                        {
+                            data: 'amount',
+                            className: 'text-end fw-bold text-danger',
+                            render: function(data) { return formatMoney(data); }
+                        },
+                        {
+                            data: null,
+                            className: 'text-center',
+                            orderable: false,
+                            searchable: false,
+                            render: function(data, type, row) {
+                                let btnHtml = `<div class="d-flex justify-content-center gap-2">
+                                     <button class="btn btn-sm btn-outline-primary rounded-circle shadow-sm" style="width: 35px; height: 35px;" onclick='openEditExpense(${JSON.stringify(row).replace(/'/g, "&#39;")})' title="แก้ไข">✏️</button>
+                                     <button class="btn btn-sm btn-outline-danger rounded-circle shadow-sm" style="width: 35px; height: 35px;" onclick="deleteExpense(${row.id})" title="ลบ">❌</button>
+                                 </div>`;
+                                 
+                                let poMatch = row.description ? row.description.match(/\(PO #(\d+)\)/) : null;
+                                if (poMatch) {
+                                    btnHtml = `<a href="/purchase-receipt/${poMatch[1]}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">📄 ดูใบสั่งซื้อ</a>`;
+                                }
+                                return btnHtml;
+                            }
+                        }
+                    ],
+                    language: {
+                        url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/th.json"
+                    },
+                    drawCallback: function(settings) {
+                        // Optional: update total expense if needed, but dt endpoint doesn't give sum
+                        document.getElementById('totalExpense').innerText = 'ระบบ DataTables (หน้าละ)';
+                    }
+                });
+            } else {
+                expenseDt.ajax.url(dtUrl).load();
+            }
         }
 
         document.getElementById('addExpenseForm').addEventListener('submit', async (e) => {
@@ -312,6 +389,45 @@
         function clearFilter() {
             setToday();
             fetchExpenses();
+        }
+
+        function openEditExpense(e) {
+            document.getElementById('editEId').value = e.id;
+            document.getElementById('editEDesc').value = e.description;
+            document.getElementById('editEAmount').value = e.amount;
+            document.getElementById('editEType').value = e.expense_type || 'OPEX';
+            document.getElementById('editEPaymentMethod').value = e.payment_method || 'Cash';
+            new bootstrap.Modal(document.getElementById('editExpenseModal')).show();
+        }
+        
+        async function submitEditExpense() {
+            const id = document.getElementById('editEId').value;
+            const payload = {
+                description: document.getElementById('editEDesc').value,
+                amount: parseFloat(document.getElementById('editEAmount').value),
+                expense_type: document.getElementById('editEType').value,
+                payment_method: document.getElementById('editEPaymentMethod').value
+            };
+            const res = await fetch(`/api/expenses/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('editExpenseModal')).hide();
+                fetchExpenses();
+            } else {
+                alert(data.message || 'Error updating expense');
+            }
+        }
+        
+        async function deleteExpense(id) {
+            if (!confirm('แน่ใจหรือไม่ว่าต้องการลบรายการนี้?')) return;
+            const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (res.ok) fetchExpenses();
+            else alert(data.message || 'Error deleting expense');
         }
 
         // Init
@@ -406,7 +522,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 

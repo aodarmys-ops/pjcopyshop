@@ -142,6 +142,16 @@
                                 <input type="number" class="form-control" id="jDeposit" value="0" min="0">
                             </div>
                         </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">กำหนดส่งงาน</label>
+                                <input type="date" class="form-control" id="jDueDate">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">ราคาขาย (บาท)</label>
+                                <input type="number" class="form-control" id="jPrice" value="0" min="0" step="0.01">
+                            </div>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">รายละเอียดงาน (เช่น ปริ้นสี 100 แผ่น เข้าเล่ม)</label>
                             <textarea class="form-control" id="jDetails" rows="4" required></textarea>
@@ -162,6 +172,8 @@
                                     <th>รหัสงาน</th>
                                     <th>ลูกค้า</th>
                                     <th>รายละเอียด</th>
+                                    <th>กำหนดส่ง</th>
+                                    <th>ราคา</th>
                                     <th>สถานะ</th>
                                     <th>จัดการ</th>
                                 </tr>
@@ -456,7 +468,7 @@
                     let li = document.createElement('li');
                     li.className = 'list-group-item list-group-item-action cursor-pointer';
                     const brandText = p.brand ? ` <span class="badge bg-secondary ms-1">${escapeHTML(p.brand)}</span>` : '';
-                    li.innerHTML = `<strong>${escapeHTML(p.name)}</strong>${brandText} <small class="text-muted ms-1">[${escapeHTML(p.barcode || 'ไม่มีบาร์โค้ด')}]</small> <span class="badge bg-primary float-end">฿${p.price}</span>`;
+                    li.innerHTML = `<strong>${escapeHTML(p.name)}</strong>${brandText} <small class="text-muted ms-1">[${escapeHTML(p.barcode || 'ไม่มีบาร์โค้ด')}]</small> <span class="badge bg-primary float-end">${p.price}</span>`;
                     li.onclick = () => {
                         addProductToMiniCart(p);
                         bInput.value = '';
@@ -518,57 +530,85 @@
             });
         }
 
+        let jobDt;
         async function fetchJobs() {
-            const res = await fetch('/api/jobs');
-            const data = await res.json();
-            if ($.fn.DataTable.isDataTable('#jobDataTable')) {
-                $('#jobDataTable').DataTable().destroy();
+            if (!jobDt) {
+                jobDt = $('#jobDataTable').DataTable({
+                    serverSide: true,
+                    processing: true,
+                    ajax: '/api/jobs/dt',
+                    order: [[0, 'desc']], // sort by id desc by default
+                    columns: [
+                        {
+                            data: 'id',
+                            render: function(data) {
+                                return `<small class="text-muted fw-bold">#JOB-${String(data).padStart(4, '0')}</small>`;
+                            }
+                        },
+                        {
+                            data: 'customer_name',
+                            render: function(data) { return `<span class="fw-bold">${escapeHTML(data)}</span>`; }
+                        },
+                        {
+                            data: 'details',
+                            render: function(data, type, row) {
+                                let dtls = escapeHTML(data);
+                                if (row.qty || row.deposit) {
+                                    dtls += `<br><small class="text-muted">จำนวน: ${row.qty || 1} | มัดจำ: ${(row.deposit || 0).toLocaleString('en-US', {minimumFractionDigits: 2})} บาท</small>`;
+                                }
+                                return dtls;
+                            }
+                        },
+                        {
+                            data: 'due_date',
+                            className: 'align-middle fw-bold',
+                            render: function(data) {
+                                let txt = data ? escapeHTML(data) : '-';
+                                return `<span class="${data ? 'text-danger' : 'text-muted'}">${txt}</span>`;
+                            }
+                        },
+                        {
+                            data: 'price',
+                            className: 'align-middle fw-bold text-success',
+                            render: function(data) {
+                                return data ? parseFloat(data).toLocaleString('en-US', {minimumFractionDigits: 2}) : '0.00';
+                            }
+                        },
+                        {
+                            data: 'status',
+                            className: 'align-middle',
+                            render: function(data) {
+                                return `<span class="badge rounded-pill bg-primary p-2 px-3 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clock-history" viewBox="0 0 16 16"><path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.429.747.91zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483zm.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501zm-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z"/><path d="M8 1a7 7 0 1 0 4.95 11.95l.707.707A8.001 8.001 0 1 1 8 0z"/><path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5"/></svg>
+                                    ${escapeHTML(data)}
+                                </span>`;
+                            }
+                        },
+                        {
+                            data: null,
+                            className: 'text-center align-middle',
+                            orderable: false,
+                            searchable: false,
+                            render: function(data, type, row) {
+                                let deposit = row.deposit || 0;
+                                return `<div class="d-flex justify-content-center gap-2">
+                                    <button class="btn btn-sm btn-success rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;" onclick="openPayment(${row.id}, ${deposit})" title="รับเงิน">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cash-coin" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M11 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8m5-4a5 5 0 1 1-10 0 5 5 0 0 1 10 0"/><path d="M9.438 11.944c.047.596.518 1.06 1.363 1.116v.44h.375v-.443c.875-.061 1.386-.529 1.386-1.207 0-.618-.39-.936-1.09-1.1l-.296-.07v-1.2c.376.043.614.248.671.532h.658c-.047-.575-.54-1.024-1.329-1.073V8.5h-.375v.45c-.747.073-1.255.522-1.255 1.158 0 .562.378.92 1.007 1.066l.248.061v1.272c-.384-.058-.639-.27-.696-.563h-.668zm1.36-1.354c-.369-.085-.569-.26-.569-.522 0-.294.216-.514.572-.578v1.1h-.003zm.432.746c.449.104.655.272.655.569 0 .339-.257.571-.709.614v-1.195l.054.012z"/><path d="M1 0a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h4.083c.058-.344.145-.678.258-1H3a2 2 0 0 0-2-2V3a2 2 0 0 0 2-2h10a2 2 0 0 0 2 2v3.528c.38.34.717.728 1 1.154V1a1 1 0 0 0-1-1z"/><path d="M9.998 5.083 10 5a2 2 0 1 0-3.132 1.65 5.982 5.982 0 0 1 3.13-1.567z"/></svg>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;" onclick="cancelJob(${row.id})" title="ยกเลิก">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                                    </button>
+                                </div>`;
+                            }
+                        }
+                    ],
+                    language: {
+                        url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/th.json"
+                    }
+                });
+            } else {
+                jobDt.ajax.reload(null, false);
             }
-            
-            const tbody = document.getElementById('jobTable');
-            let rowsHtml = '';
-
-            data.forEach(j => {
-                let row = `<tr>
-                    <td><small class="text-muted fw-bold">#JOB-${String(j.id).padStart(4, '0')}</small></td>
-                    <td class="fw-bold">${escapeHTML(j.customer_name)}</td>
-                    <td>
-                        ${escapeHTML(j.details)}
-                        ${(j.qty || j.deposit) ? `<br><small class="text-muted">จำนวน: ${j.qty || 1} | มัดจำ: ${j.deposit || 0} บาท</small>` : ''}
-                    </td>
-                    <td class="align-middle">
-                        <span class="badge rounded-pill bg-primary p-2 px-3 shadow-sm d-inline-flex align-items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clock-history" viewBox="0 0 16 16"><path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.429.747.91zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483zm.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501zm-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z"/><path d="M8 1a7 7 0 1 0 4.95 11.95l.707.707A8.001 8.001 0 1 1 8 0z"/><path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5"/></svg>
-                            ${j.status}
-                        </span>
-                    </td>
-                    <td class="text-center align-middle">
-                        <div class="d-flex justify-content-center gap-2">
-                            <button class="btn btn-sm btn-success rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;" onclick="openPayment(${j.id}, ${j.deposit || 0})" title="รับเงิน">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cash-coin" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M11 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8m5-4a5 5 0 1 1-10 0 5 5 0 0 1 10 0"/><path d="M9.438 11.944c.047.596.518 1.06 1.363 1.116v.44h.375v-.443c.875-.061 1.386-.529 1.386-1.207 0-.618-.39-.936-1.09-1.1l-.296-.07v-1.2c.376.043.614.248.671.532h.658c-.047-.575-.54-1.024-1.329-1.073V8.5h-.375v.45c-.747.073-1.255.522-1.255 1.158 0 .562.378.92 1.007 1.066l.248.061v1.272c-.384-.058-.639-.27-.696-.563h-.668zm1.36-1.354c-.369-.085-.569-.26-.569-.522 0-.294.216-.514.572-.578v1.1h-.003zm.432.746c.449.104.655.272.655.569 0 .339-.257.571-.709.614v-1.195l.054.012z"/><path d="M1 0a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h4.083c.058-.344.145-.678.258-1H3a2 2 0 0 0-2-2V3a2 2 0 0 0 2-2h10a2 2 0 0 0 2 2v3.528c.38.34.717.728 1 1.154V1a1 1 0 0 0-1-1z"/><path d="M9.998 5.083 10 5a2 2 0 1 0-3.132 1.65 5.982 5.982 0 0 1 3.13-1.567z"/></svg>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;" onclick="cancelJob(${j.id})" title="ยกเลิก">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
-                            </button>
-                        </div>
-                    </td>
-                </tr>`;
-                rowsHtml += row;
-            });
-            
-            tbody.innerHTML = rowsHtml;
-            
-            $('#jobDataTable').DataTable({
-                pagingType: 'full_numbers',
-                language: {
-                    paginate: { first: 'แรกสุด', previous: 'ก่อนหน้า', next: 'ถัดไป', last: 'ท้ายสุด' },
-                    lengthMenu: "แสดง _MENU_ รายการ",
-                    zeroRecords: "ไม่พบข้อมูล",
-                    info: "แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ",
-                    infoEmpty: "ไม่มีข้อมูล",
-                    search: "ค้นหา:"
-                }
-            });
         }
         
         async function cancelJob(id) {
@@ -744,7 +784,9 @@
                 customer_name: customerName,
                 details: document.getElementById('jDetails').value,
                 qty: parseInt(document.getElementById('jQty').value) || 1,
-                deposit: parseFloat(document.getElementById('jDeposit').value) || 0
+                deposit: parseFloat(document.getElementById('jDeposit').value) || 0,
+                due_date: document.getElementById('jDueDate').value || null,
+                price: parseFloat(document.getElementById('jPrice').value) || 0
             };
             
             const res = await fetch('/api/jobs', {
@@ -868,7 +910,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 

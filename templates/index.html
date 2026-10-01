@@ -127,7 +127,7 @@
                 <a href="/logout" class="btn btn-warning fw-bold rounded-pill shadow-sm px-4">🚪 ออกจากระบบ (Logout)</a>
             </div>
         </div>
-        
+
         <div class="row g-4">
             <!-- POS -->
             <div class="col-md-4">
@@ -187,8 +187,14 @@
                 <div class="glass-card feature-box text-center">
                     <div class="icon">📊</div>
                     <h3 class="fw-bold">รายงาน</h3>
-                    <p class="text-muted">ดูรายงานสรุปยอดขายและกำไรสุทธิ</p>
-                    <a href="/reports" class="btn btn-dark w-100 rounded-pill">ดูรายงาน</a>
+                    <p class="text-muted">ดูรายงาน / จัดการรอบวันทำการ</p>
+                    <div class="d-flex gap-2">
+                        <a href="/reports" class="btn btn-dark w-50 rounded-pill">ดูรายงาน</a>
+                        <button onclick="toggleBusinessDay()" id="btnBizDay" class="btn btn-outline-secondary w-50 rounded-pill" disabled>
+                            <span class="spinner-border spinner-border-sm d-none" id="bizSpinner"></span>
+                            <span id="bizText">โหลด...</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -207,6 +213,27 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Promotions -->
+            <div class="col-md-4">
+                <div class="glass-card feature-box text-center">
+                    <div class="icon">🎁</div>
+                    <h3 class="fw-bold">โปรโมชั่น</h3>
+                    <p class="text-muted">จัดการโปรโมชั่นและส่วนลด</p>
+                    <a href="/promotions" class="btn btn-primary w-100 rounded-pill">จัดการโปรโมชั่น</a>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="col-md-4">
+                <div class="glass-card feature-box text-center">
+                    <div class="icon">⚙️</div>
+                    <h3 class="fw-bold">ตั้งค่าระบบ</h3>
+                    <p class="text-muted">ตั้งค่าข้อมูลร้านและ Audit Log</p>
+                    <a href="/settings" class="btn btn-secondary w-100 rounded-pill">การตั้งค่า</a>
+                </div>
+            </div>
+            
         </div>
     </div>
 
@@ -403,7 +430,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
 
         function syncGoogleSheets() {
@@ -493,5 +520,74 @@
     })();
     </script>
 
+    <script>
+        let isBizOpen = false;
+        async function checkBusinessDay() {
+            try {
+                const res = await fetch('/api/business/current');
+                const data = await res.json();
+                const btn = document.getElementById('btnBizDay');
+                const text = document.getElementById('bizText');
+                if (!btn) return;
+                btn.disabled = false;
+                
+                if (data.is_closed) {
+                    isBizOpen = false;
+                    btn.className = "btn btn-outline-success w-50 rounded-pill fw-bold";
+                    text.innerText = "เปิดร้าน";
+                } else {
+                    isBizOpen = true;
+                    btn.className = "btn btn-outline-danger w-50 rounded-pill fw-bold";
+                    text.innerText = "ปิดวันทำการ";
+                }
+            } catch (err) {
+                console.error('Failed to load business day status', err);
+            }
+        }
+
+        async function toggleBusinessDay() {
+            const btn = document.getElementById('btnBizDay');
+            const spinner = document.getElementById('bizSpinner');
+            
+            if (isBizOpen) {
+                if (!confirm("คุณต้องการ ปิดรอบวันทำการ ใช่หรือไม่?")) return;
+                btn.disabled = true;
+                spinner.classList.remove('d-none');
+                
+                try {
+                    const res = await fetch('/api/business/close', { method: 'POST' });
+                    const data = await res.json();
+                    alert(data.message || (res.ok ? "ปิดร้านสำเร็จ" : "เกิดข้อผิดพลาด"));
+                    checkBusinessDay();
+                } catch (e) {
+                    alert("Error closing business day");
+                }
+            } else {
+                if (!confirm("คุณต้องการ เปิดรอบวันทำการ ใช่หรือไม่?")) return;
+                let cash = 0;
+                
+                btn.disabled = true;
+                spinner.classList.remove('d-none');
+                
+                try {
+                    const res = await fetch('/api/business/open', { 
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ starting_cash: cash })
+                    });
+                    const data = await res.json();
+                    alert(data.message || (res.ok ? "เปิดร้านสำเร็จ" : "เกิดข้อผิดพลาด"));
+                    checkBusinessDay();
+                } catch (e) {
+                    alert("Error opening business day");
+                }
+            }
+            spinner.classList.add('d-none');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            checkBusinessDay();
+        });
+    </script>
 </body>
 </html>

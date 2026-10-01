@@ -1,30 +1,105 @@
 # pyrefly: ignore [missing-import]
-from flask import g, has_app_context, Flask, jsonify, request, render_template, session, redirect, url_for
+from flask import g, has_app_context, has_request_context, Flask, jsonify, request, render_template, session, redirect, url_for
+from functools import wraps
 import sqlite3
 import os
+import math
+import datetime
+import random
+import csv
+import zipfile
+import io
+import shutil
+import signal
+import tempfile
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'pjcopyshop_secret_1234' # Required for session
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'pjcopyshop_secret_1234')  # Required for session
+
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri="memory://"
+    )
+except ImportError:
+    # Fallback if flask-limiter is not installed yet
+    class DummyLimiter:
+        def limit(self, *args, **kwargs):
+            def decorator(f):
+                return f
+            return decorator
+    limiter = DummyLimiter()
+
 DB_FILE = 'xerox.db'
 
 def get_db_connection():
-    if has_app_context():
-        if 'db' not in g:
-            g.db = sqlite3.connect(DB_FILE)
-            g.db.row_factory = sqlite3.Row
-            g.db.execute('PRAGMA foreign_keys = ON;')
-        return g.db
-    else:
-        conn = sqlite3.connect(DB_FILE)
+    def setup_conn(conn):
         conn.row_factory = sqlite3.Row
         conn.execute('PRAGMA foreign_keys = ON;')
+        conn.execute('PRAGMA journal_mode = WAL;')
+        conn.execute('PRAGMA synchronous = NORMAL;')
+        conn.execute('PRAGMA temp_store = MEMORY;')
+        conn.execute('PRAGMA busy_timeout = 5000;')
         return conn
+
+    if has_app_context():
+        if 'db' not in g:
+            g.db = setup_conn(sqlite3.connect(DB_FILE, timeout=5.0))
+        return g.db
+    else:
+        return setup_conn(sqlite3.connect(DB_FILE, timeout=5.0))
 
 @app.teardown_appcontext
 def close_connection(exception):
     db = g.pop('db', None)
     if db is not None:
         db.close()
+
+def generate_datatables_response(query_base, request_args, search_cols, order_cols):
+    conn = get_db_connection()
+    start = int(request_args.get('start', 0))
+    length = int(request_args.get('length', 10))
+    search_value = request_args.get('search[value]', '').strip()
+    
+    total_query = f"SELECT COUNT(*) as count FROM ({query_base})"
+    total_records = conn.execute(total_query).fetchone()['count']
+    
+    search_clause = ""
+    params = []
+    if search_value:
+        clauses = [f"{col} LIKE ?" for col in search_cols]
+        search_clause = " WHERE " + " OR ".join(clauses)
+        params.extend([f"%{search_value}%"] * len(search_cols))
+        
+    filtered_query = f"SELECT COUNT(*) as count FROM ({query_base}) {search_clause}"
+    filtered_records = conn.execute(filtered_query, params).fetchone()['count']
+    
+    order_col_idx = request_args.get('order[0][column]')
+    order_dir = request_args.get('order[0][dir]', 'asc').lower()
+    order_clause = ""
+    if order_col_idx is not None and order_col_idx.isdigit():
+        idx = int(order_col_idx)
+        if idx < len(order_cols) and order_cols[idx]:
+            if order_dir not in ['asc', 'desc']: order_dir = 'asc'
+            order_clause = f" ORDER BY {order_cols[idx]} {order_dir.upper()}"
+            
+    final_query = f"SELECT * FROM ({query_base}) {search_clause} {order_clause} LIMIT ? OFFSET ?"
+    params.extend([length, start])
+    
+    rows = conn.execute(final_query, params).fetchall()
+    conn.close()
+    
+    return jsonify({
+        "draw": int(request_args.get('draw', 1)),
+        "recordsTotal": total_records,
+        "recordsFiltered": filtered_records,
+        "data": [dict(ix) for ix in rows]
+    })
 
 def init_db():
     conn = get_db_connection()
@@ -41,7 +116,8 @@ def init_db():
     # Insert default admin user if no users exist
     c.execute('SELECT COUNT(*) FROM Users')
     if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO Users (username, role, pin) VALUES ('Admin', 'Admin', '1234')")
+        c.execute("INSERT INTO Users (username, role, pin) VALUES ('Admin', 'Admin', ?)",
+                  (generate_password_hash('1234'),))
 
     # Products & Services
     c.execute('''
@@ -95,10 +171,16 @@ def init_db():
             product_id INTEGER,
             qty INTEGER NOT NULL,
             price REAL NOT NULL,
+            cost_price REAL DEFAULT 0,
             FOREIGN KEY(sale_id) REFERENCES Sales(id),
             FOREIGN KEY(product_id) REFERENCES Products_Services(id)
         )
     ''')
+    
+    # Auto-migration for cost_price
+    columns = [col['name'] for col in c.execute('PRAGMA table_info(Sale_Items)').fetchall()]
+    if 'cost_price' not in columns:
+        c.execute('ALTER TABLE Sale_Items ADD COLUMN cost_price REAL DEFAULT 0')
     # Purchases
     c.execute('''
         CREATE TABLE IF NOT EXISTS Purchases (
@@ -241,8 +323,218 @@ def init_db():
             FOREIGN KEY(product_id) REFERENCES Products_Services(id)
         )
     ''')
+    # Settings (ตั้งค่าร้าน)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    ''')
+    for _k, _v in [
+        ('shop_name', 'PJ Copy Shop'), ('shop_address', ''), ('shop_phone', ''),
+        ('promptpay_number', '0812345678'), ('vat_rate', '7'),
+        ('receipt_footer', 'ขอบคุณที่ใช้บริการ'), ('currency_symbol', '฿'),
+    ]:
+        c.execute('INSERT OR IGNORE INTO Settings (key, value) VALUES (?, ?)', (_k, _v))
+
+    # Audit Log
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Audit_Log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            action TEXT NOT NULL,
+            details TEXT,
+            entity_type TEXT,
+            entity_id INTEGER,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Job_Orders column migrations (due_date, price)
+    for _col_def in [('due_date', 'DATE'), ('price', 'REAL DEFAULT 0')]:
+        try:
+            c.execute(f'ALTER TABLE Job_Orders ADD COLUMN {_col_def[0]} {_col_def[1]}')
+        except Exception:
+            pass  # คอลัมน์มีอยู่แล้ว
+
+    # UOM migrations
+    for _col_def in [('base_unit', "TEXT DEFAULT 'ชิ้น'"), ('purchase_unit', "TEXT DEFAULT ''"), ('conversion_rate', "REAL DEFAULT 1.0")]:
+        try:
+            c.execute(f'ALTER TABLE Products_Services ADD COLUMN {_col_def[0]} {_col_def[1]}')
+        except Exception:
+            pass
+            
+    for _col_def in [('buy_unit', "TEXT"), ('buy_qty', "REAL"), ('buy_cost', "REAL"), ('multiplier', "REAL DEFAULT 1.0")]:
+        try:
+            c.execute(f'ALTER TABLE Purchase_Items ADD COLUMN {_col_def[0]} {_col_def[1]}')
+        except Exception:
+            pass
+
+    # UNIQUE index เพื่อป้องกัน invoice_no ซ้ำกรณี concurrent access
+    try:
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_invoice_no ON Sales(invoice_no) WHERE invoice_no IS NOT NULL')
+    except Exception:
+        pass  # ข้ามถ้าข้อมูลเก่ามี duplicate อยู่แล้ว
+        
+    # Performance Indexes
+    indexes = [
+        'CREATE INDEX IF NOT EXISTS idx_products_barcode ON Products_Services(barcode);',
+        'CREATE INDEX IF NOT EXISTS idx_products_type ON Products_Services(type);',
+        'CREATE INDEX IF NOT EXISTS idx_products_is_active ON Products_Services(is_active);',
+        'CREATE INDEX IF NOT EXISTS idx_sales_timestamp ON Sales(timestamp);',
+        'CREATE INDEX IF NOT EXISTS idx_sales_payment_status ON Sales(payment_status);',
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON Sale_Items(sale_id);',
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON Sale_Items(product_id);',
+        'CREATE INDEX IF NOT EXISTS idx_jobs_status ON Job_Orders(status);',
+        'CREATE INDEX IF NOT EXISTS idx_purchases_timestamp ON Purchases(timestamp);',
+        'CREATE INDEX IF NOT EXISTS idx_expenses_timestamp ON Expenses(timestamp);',
+        'CREATE INDEX IF NOT EXISTS idx_stock_count_date ON Stock_Counts(count_date);'
+    ]
+    for idx in indexes:
+        try:
+            c.execute(idx)
+        except Exception:
+            pass
+            
     conn.commit()
     conn.close()
+
+
+def migrate_pins_to_hash():
+    """อัปเกรด PIN แบบ plain-text ที่มีอยู่ให้เป็น hashed (รันครั้งเดียวหลัง upgrade)"""
+    conn = get_db_connection()
+    try:
+        users = conn.execute('SELECT id, pin FROM Users').fetchall()
+        for user in users:
+            pin = user['pin']
+            if pin and not pin.startswith(('pbkdf2:', 'scrypt:')):
+                hashed = generate_password_hash(pin)
+                conn.execute('UPDATE Users SET pin = ? WHERE id = ?', (hashed, user['id']))
+        conn.commit()
+    except Exception as ex:
+        app.logger.warning(f'PIN migration warning: {ex}')
+    finally:
+        conn.close()
+
+
+def get_setting(key, default=''):
+    """ดึงค่าการตั้งค่าร้านจาก Settings table"""
+    conn = get_db_connection()
+    try:
+        row = conn.execute('SELECT value FROM Settings WHERE key = ?', (key,)).fetchone()
+        return row['value'] if row else default
+    except Exception:
+        return default
+    finally:
+        if not has_app_context():
+            conn.close()
+
+
+def log_action(action, details='', entity_type='', entity_id=None):
+    """บันทึก Audit Log สำหรับการกระทำสำคัญ"""
+    try:
+        conn = get_db_connection()
+        user_id = session.get('user_id') if has_request_context() else None
+        username = session.get('username', 'System') if has_request_context() else 'System'
+        conn.execute(
+            'INSERT INTO Audit_Log (user_id, username, action, details, entity_type, entity_id) VALUES (?,?,?,?,?,?)',
+            (user_id, username, action, details, entity_type, entity_id)
+        )
+        conn.commit()
+        if not has_app_context():
+            conn.close()
+    except Exception:
+        pass
+
+
+def require_role(*allowed_roles):
+    """Decorator สำหรับบังคับสิทธิ์การเข้าถึงตาม Role"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            role = session.get('role')
+            if not role:
+                return jsonify({'error': 'Unauthorized — กรุณาเข้าสู่ระบบ'}), 401
+            if role not in allowed_roles:
+                return jsonify({'error': f'Access denied — ต้องการสิทธิ์: {", ".join(allowed_roles)}'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def generate_invoice_no(cursor=None):
+    """สร้างเลขที่ใบเสร็จ (INVYYMM-XXXX) โดยใช้ connection แยกเพื่อหลีกเลี่ยง race condition"""
+    now = datetime.datetime.now()
+    yy = str(now.year + 543)[2:]
+    mm = f"{now.month:02d}"
+    prefix = f"INV{yy}{mm}-"
+
+    # ใช้ connection แยก (read committed data จาก transaction อื่น)
+    check_conn = sqlite3.connect(DB_FILE, timeout=10)
+    check_conn.row_factory = sqlite3.Row
+    try:
+        for _ in range(20):
+            # ใช้ MAX(CAST) เพื่อหา sequence สูงสุดแบบตัวเลข (ไม่ใช่ alphabetic sort)
+            row = check_conn.execute(
+                "SELECT MAX(CAST(SUBSTR(invoice_no, ?) AS INTEGER)) as max_seq "
+                "FROM Sales WHERE invoice_no LIKE ?",
+                (len(prefix) + 1, prefix + '%')
+            ).fetchone()
+            seq = (row['max_seq'] or 0) + 1
+            candidate = f"{prefix}{seq:04d}"
+            # ตรวจว่าไม่ซ้ำ
+            if not check_conn.execute('SELECT id FROM Sales WHERE invoice_no = ?', (candidate,)).fetchone():
+                return candidate
+            # ถ้าซ้ำ (concurrent) ให้ข้ามไปเลขถัดไปทันที
+            seq += 1
+    finally:
+        check_conn.close()
+
+    # Fallback: random suffix
+    return f"{prefix}{random.randint(10001, 19999):05d}"
+
+
+def create_backup_zip(conn):
+    """สร้างไฟล์ ZIP สำหรับ backup ฐานข้อมูล (hot backup ผ่าน sqlite3.backup)"""
+    tables = ['Products_Services', 'Customers', 'Sales', 'Sale_Items', 'Purchases',
+              'Purchase_Items', 'Expenses', 'Stock_WriteOffs', 'Customer_Credit']
+
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w') as zf:
+        try:
+            if os.path.exists(DB_FILE):
+                fd, tmp_path = tempfile.mkstemp(suffix='.db')
+                os.close(fd)
+                try:
+                    with sqlite3.connect(DB_FILE) as src:
+                        dest = sqlite3.connect(tmp_path)
+                        src.backup(dest)
+                        dest.close()
+                    with open(tmp_path, 'rb') as f:
+                        db_data = f.read()
+                    zf.writestr('pjcopy.db', db_data)
+                    zf.writestr('xerox.db', db_data)
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        for table in tables:
+            rows = conn.execute(f"SELECT * FROM {table}").fetchall()
+            if not rows:
+                continue
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+            writer.writerow(rows[0].keys())
+            for row in rows:
+                writer.writerow(row)
+            zf.writestr(f"{table}.csv", csv_buffer.getvalue())
+
+    memory_file.seek(0)
+    return memory_file
+
 
 @app.before_request
 def require_login():
@@ -251,12 +543,18 @@ def require_login():
         return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
     if request.method == 'POST':
         pin = request.form.get('pin')
         conn = get_db_connection()
-        user = conn.execute('SELECT * FROM Users WHERE pin = ?', (pin,)).fetchone()
+        all_users = conn.execute('SELECT * FROM Users').fetchall()
         conn.close()
+        user = None
+        for u in all_users:
+            if check_password_hash(u['pin'], pin):
+                user = u
+                break
         if user:
             session['user_id'] = user['id']
             session['username'] = user['username']
@@ -298,12 +596,17 @@ def change_password():
         return jsonify({'error': 'ข้อมูลไม่ครบถ้วน'}), 400
         
     conn = get_db_connection()
-    user = conn.execute('SELECT * FROM Users WHERE username = ? AND pin = ?', (username, old_pin)).fetchone()
+    all_users = conn.execute('SELECT * FROM Users WHERE username = ?', (username,)).fetchall()
+    user = None
+    for u in all_users:
+        if check_password_hash(u['pin'], old_pin):
+            user = u
+            break
     if not user:
         conn.close()
         return jsonify({'error': 'ชื่อผู้ใช้หรือรหัสผ่านเก่าไม่ถูกต้อง'}), 401
         
-    conn.execute('UPDATE Users SET pin = ? WHERE id = ?', (new_pin, user['id']))
+    conn.execute('UPDATE Users SET pin = ? WHERE id = ?', (generate_password_hash(new_pin), user['id']))
     conn.commit()
     conn.close()
     
@@ -504,6 +807,44 @@ def search_product():
     conn.close()
     return jsonify([dict(ix) for ix in products])
 
+@app.route('/api/products/dt', methods=['GET'])
+def products_dt():
+    conn = get_db_connection()
+    draw = request.args.get('draw', type=int)
+    start = request.args.get('start', type=int, default=0)
+    length = request.args.get('length', type=int, default=10)
+    search_value = request.args.get('search[value]', '')
+    
+    query = "SELECT * FROM Products_Services WHERE is_active = 1"
+    params = []
+    
+    if search_value:
+        query += " AND (name LIKE ? OR barcode LIKE ? OR id LIKE ?)"
+        params.extend([f"%{search_value}%", f"%{search_value}%", f"%{search_value}%"])
+        
+    total_records = conn.execute("SELECT COUNT(*) FROM Products_Services WHERE is_active = 1").fetchone()[0]
+    total_filtered = conn.execute(f"SELECT COUNT(*) FROM ({query})", params).fetchone()[0]
+    
+    order_col_idx = request.args.get('order[0][column]', type=int, default=0)
+    order_dir = request.args.get('order[0][dir]', default='desc')
+    
+    columns_map = ['barcode', 'name', 'brand', 'type', 'price', 'stock_qty', 'id']
+    order_col = columns_map[order_col_idx] if order_col_idx < len(columns_map) else 'id'
+    if order_dir not in ['asc', 'desc']: order_dir = 'desc'
+    
+    query += f" ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
+    params.extend([length, start])
+    
+    products = conn.execute(query, params).fetchall()
+    conn.close()
+    
+    return jsonify({
+        "draw": draw,
+        "recordsTotal": total_records,
+        "recordsFiltered": total_filtered,
+        "data": [dict(p) for p in products]
+    })
+
 @app.route('/api/products', methods=['GET'])
 def get_products():
     conn = get_db_connection()
@@ -516,11 +857,14 @@ def add_product():
     new_product = request.get_json()
     name = new_product.get('name')
     type = new_product.get('type')
+    
+    if not name or not type:
+        return jsonify({"message": "กรุณาระบุชื่อสินค้าและประเภท"}), 400
+    
     brand = new_product.get('brand', '')
     model = new_product.get('model', '')
     color = new_product.get('color', '')
     
-    import random
     barcode = new_product.get('barcode', '').strip()
     if not barcode:
         # Generate random 8 digit barcode
@@ -530,6 +874,10 @@ def add_product():
     cost = new_product.get('cost', 0.0)
     stock_qty = new_product.get('stock_qty', 0)
     reorder_level = new_product.get('reorder_level', 5)
+    
+    base_unit = new_product.get('base_unit', 'ชิ้น')
+    purchase_unit = new_product.get('purchase_unit', '')
+    conversion_rate = new_product.get('conversion_rate', 1.0)
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -547,9 +895,9 @@ def add_product():
         return jsonify({"message": f"มีสินค้านี้ (ชื่อ, ยี่ห้อ, รุ่น, สี เดียวกัน) ในระบบแล้ว!"}), 400
 
     c.execute('''
-        INSERT INTO Products_Services (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level))
+        INSERT INTO Products_Services (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level, base_unit, purchase_unit, conversion_rate)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level, base_unit, purchase_unit, conversion_rate))
     conn.commit()
     conn.close()
     return jsonify({"message": "เพิ่มสินค้าใหม่เรียบร้อยแล้ว"}), 201
@@ -593,6 +941,10 @@ def update_product(product_id):
     cost = data.get('cost', 0.0)
     stock_qty = data.get('stock_qty', 0)
     reorder_level = data.get('reorder_level', 5)
+    
+    base_unit = data.get('base_unit', 'ชิ้น')
+    purchase_unit = data.get('purchase_unit', '')
+    conversion_rate = data.get('conversion_rate', 1.0)
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -611,9 +963,9 @@ def update_product(product_id):
 
     c.execute('''
         UPDATE Products_Services 
-        SET name=?, type=?, barcode=?, brand=?, model=?, color=?, price=?, cost=?, stock_qty=?, reorder_level=?
+        SET name=?, type=?, barcode=?, brand=?, model=?, color=?, price=?, cost=?, stock_qty=?, reorder_level=?, base_unit=?, purchase_unit=?, conversion_rate=?
         WHERE id = ?
-    ''', (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level, product_id))
+    ''', (name, type, barcode, brand, model, color, price, cost, stock_qty, reorder_level, base_unit, purchase_unit, conversion_rate, product_id))
     conn.commit()
     conn.close()
     
@@ -653,7 +1005,14 @@ def writeoff_stock():
         
     conn = get_db_connection()
     c = conn.cursor()
-    
+
+    # ตรวจสอบสต็อกก่อนตัดของเสีย
+    current = c.execute('SELECT stock_qty FROM Products_Services WHERE id = ?', (product_id,)).fetchone()
+    if not current or current['stock_qty'] < qty:
+        conn.close()
+        available = current['stock_qty'] if current else 0
+        return jsonify({"message": f"สต็อกไม่เพียงพอ (มีอยู่ {available} ชิ้น ไม่สามารถตัด {qty} ชิ้นได้)"}), 400
+
     c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, product_id))
     c.execute('INSERT INTO Stock_WriteOffs (product_id, qty, reason) VALUES (?, ?, ?)', (product_id, qty, reason))
     
@@ -710,18 +1069,18 @@ def checkout_sale():
     c = conn.cursor()
     
     # Calculate Total Amount and apply Round Up (ปัดเศษขึ้นเสมอ)
-    import math
     subtotal = sum(item['price'] * item['qty'] for item in items)
     
-    # 0. Check Stock & Product Existence
-    for item in items:
-        p = c.execute('SELECT stock_qty, type FROM Products_Services WHERE id = ?', (item.get('id'),)).fetchone()
-        if not p:
-            conn.close()
-            return jsonify({"message": f"Product id {item.get('id')} not found"}), 400
-        if item.get('type') != 'Service' and p['stock_qty'] < item.get('qty', 0):
-            conn.close()
-            return jsonify({"message": f"สินค้า {item.get('name', 'Product')} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
+    # 0. Check Stock & Product Existence (ข้ามสำหรับ Hold เพราะยังไม่ตัดสต๊อก)
+    if payment_status != 'Hold':
+        for item in items:
+            p = c.execute('SELECT stock_qty, type FROM Products_Services WHERE id = ?', (item.get('id'),)).fetchone()
+            if not p:
+                conn.close()
+                return jsonify({"message": f"Product id {item.get('id')} not found"}), 400
+            if p['type'] != 'Service' and p['stock_qty'] < item.get('qty', 0):
+                conn.close()
+                return jsonify({"message": f"สินค้า {item.get('name', 'Product')} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
 
     loyalty_discount = 0
 
@@ -745,21 +1104,23 @@ def checkout_sale():
     discount = manual_discount + loyalty_discount
     total_amount = math.ceil(max(0, subtotal - discount))
     
-    # Generate Invoice No (INVYYMM-XXXX)
-    import datetime
-    now = datetime.datetime.now()
-    yy = str(now.year + 543)[2:]
-    mm = f"{now.month:02d}"
-    prefix = f"INV{yy}{mm}-"
-    last_inv = c.execute("SELECT invoice_no FROM Sales WHERE invoice_no LIKE ? ORDER BY invoice_no DESC LIMIT 1", (prefix + '%',)).fetchone()
-    seq = int(last_inv['invoice_no'].split('-')[1]) + 1 if last_inv else 1
-    invoice_no = f"{prefix}{seq:04d}"
+    # Generate Invoice No — ใช้ helper function (connection แยกเพื่อ avoid race condition)
+    invoice_no = generate_invoice_no()
     
-    # 1. Insert into Sales
-    c.execute('''
-        INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes))
+    # 1. Insert into Sales (retry 3 ครั้งหากเกิด UNIQUE conflict จาก concurrent requests)
+    for _attempt in range(3):
+        try:
+            c.execute('''
+                INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes))
+            break  # success
+        except sqlite3.IntegrityError as e:
+            if 'UNIQUE constraint failed: Sales.invoice_no' in str(e) and _attempt < 2:
+                invoice_no = generate_invoice_no()  # generate ใหม่แล้ว retry
+            else:
+                conn.close()
+                return jsonify({"message": "ไม่สามารถสร้างเลขบิลได้ กรุณาลองใหม่"}), 500
     sale_id = c.lastrowid
     
     # Insert into Customer_Credit if Unpaid (or Hold, though scope says Unpaid means Credit)
@@ -775,17 +1136,30 @@ def checkout_sale():
         product_id = item['id']
         qty = item['qty']
         price = item['price']
-        item_type = item.get('type', '')
+        prod_info = c.execute('SELECT type, cost FROM Products_Services WHERE id = ?', (product_id,)).fetchone()
+        item_type = prod_info['type'] if prod_info else ''
+        base_cost = prod_info['cost'] if prod_info else 0.0
         
-        c.execute('INSERT INTO Sale_Items (sale_id, product_id, qty, price) VALUES (?, ?, ?, ?)',
-                  (sale_id, product_id, qty, price))
+        # Check BOM for Raw Materials deduction
+        bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?', (product_id,)).fetchall()
+        
+        # Calculate item cost dynamically from BOM or use base cost
+        item_cost = 0.0
+        if bom_items:
+            for b in bom_items:
+                raw_prod = c.execute('SELECT cost FROM Products_Services WHERE id = ?', (b['raw_material_id'],)).fetchone()
+                raw_cost = raw_prod['cost'] if raw_prod else 0.0
+                item_cost += (raw_cost * b['qty_required'])
+        else:
+            item_cost = base_cost
+            
+        c.execute('INSERT INTO Sale_Items (sale_id, product_id, qty, price, cost_price) VALUES (?, ?, ?, ?, ?)',
+                  (sale_id, product_id, qty, price, item_cost))
                   
         if payment_status != 'Hold':
             if item_type == 'Brewed Drink' and not item.get('is_redeemed') and not redeemed_points:
                 earned_points += qty
             
-            # Check BOM for Raw Materials deduction
-            bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?', (product_id,)).fetchall()
             if bom_items:
                 for b in bom_items:
                     raw_qty = b['qty_required'] * qty
@@ -845,6 +1219,7 @@ def pull_held_sale(sale_id):
     return jsonify({"message": "Held sale deleted successfully"})
 
 @app.route('/api/sales/<int:sale_id>/void', methods=['POST'])
+@require_role('Admin', 'Manager')
 def void_sale(sale_id):
     conn = get_db_connection()
     c = conn.cursor()
@@ -855,22 +1230,68 @@ def void_sale(sale_id):
         conn.close()
         return jsonify({"message": "Invalid or already voided sale"}), 400
         
-    # Get items to return stock
-    items = c.execute("SELECT product_id, qty FROM Sale_Items WHERE sale_id = ?", (sale_id,)).fetchall()
-    
+    # ดึงข้อมูลบิลเพื่อคืนแต้มสะสม
+    sale_detail = c.execute("SELECT customer_id, redeemed_points FROM Sales WHERE id = ?", (sale_id,)).fetchone()
+
+    # คืนสต็อกและนับแต้มที่เคยได้จากบิลนี้
+    items = c.execute('''
+        SELECT si.product_id, si.qty, p.type AS product_type
+        FROM Sale_Items si
+        JOIN Products_Services p ON si.product_id = p.id
+        WHERE si.sale_id = ?
+    ''', (sale_id,)).fetchall()
+
+    earned_points = 0
     for item in items:
-        # Return stock for all product types except 'Service'
-        c.execute("UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ? AND type != 'Service'",
-                  (item['qty'], item['product_id']))
-                  
-    # Mark as voided
+        if item['product_type'] == 'Brewed Drink':
+            earned_points += item['qty']
+        
+        # ตรวจ BOM เพื่อคืนสต็อกวัตถุดิบ
+        bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?',
+                              (item['product_id'],)).fetchall()
+        if bom_items:
+            for b in bom_items:
+                raw_qty = b['qty_required'] * item['qty']
+                c.execute("UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ?",
+                          (raw_qty, b['raw_material_id']))
+        elif item['product_type'] != 'Service':
+            # คืนสต็อกปกติ (ไม่มี BOM)
+            c.execute("UPDATE Products_Services SET stock_qty = stock_qty + ? WHERE id = ?",
+                      (item['qty'], item['product_id']))
+
+    # ย้อนแต้มสะสม: หักแต้มที่เคยได้ + คืนแต้มที่เคยใช้แลก
+    if sale_detail and sale_detail['customer_id']:
+        redeemed = sale_detail['redeemed_points'] or 0
+        c.execute(
+            'UPDATE Customers SET points = MAX(0, points - ? + ?) WHERE id = ?',
+            (earned_points, redeemed, sale_detail['customer_id'])
+        )
+
+    # ยกเลิก Customer_Credit (ถ้ามี)
+    c.execute("UPDATE Customer_Credit SET status = 'Cancelled', amount_due = 0 WHERE sale_id = ?", (sale_id,))
+
+    # ทำเครื่องหมายยกเลิก
     c.execute("UPDATE Sales SET payment_status = 'ยกเลิกบิล', total_amount = 0 WHERE id = ?", (sale_id,))
     
+    log_action('VOID_SALE', f'ยกเลิกบิล #{sale_id}', 'Sale', sale_id)
     conn.commit()
     conn.close()
     return jsonify({"message": "Sale voided successfully"})
 
 # --- Purchasing / Procurement ---
+@app.route('/api/purchases/dt', methods=['GET'])
+def get_purchases_dt():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    query_base = "SELECT * FROM Purchases"
+    if start_date and end_date:
+        query_base += f" WHERE timestamp >= '{start_date} 00:00:00' AND timestamp <= '{end_date} 23:59:59'"
+        
+    search_cols = ['supplier_name', 'payment_method']
+    order_cols = ['id', 'timestamp', 'supplier_name', 'total_amount', 'payment_method']
+    return generate_datatables_response(query_base, request.args, search_cols, order_cols)
+
 @app.route('/api/purchases', methods=['GET'])
 def get_purchases():
     start_date = request.args.get('start_date')
@@ -931,34 +1352,49 @@ def add_purchase():
     # 2. Insert Items & Update Stock & Cost
     for item in items:
         product_id = item['id']
-        qty = item['qty']
-        cost = item['cost']
+        buy_qty = float(item.get('qty', 1.0))
+        buy_cost = float(item.get('cost', 0.0))
+        multiplier = float(item.get('multiplier', 1.0))
+        buy_unit = item.get('buy_unit', '')
         
-        c.execute('INSERT INTO Purchase_Items (purchase_id, product_id, qty, cost_price) VALUES (?, ?, ?, ?)',
-                  (purchase_id, product_id, qty, cost))
+        base_qty = buy_qty * multiplier
+        base_cost = buy_cost / multiplier if multiplier > 0 else buy_cost
+        
+        c.execute('INSERT INTO Purchase_Items (purchase_id, product_id, qty, cost_price, buy_unit, buy_qty, buy_cost, multiplier) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                  (purchase_id, product_id, base_qty, base_cost, buy_unit, buy_qty, buy_cost, multiplier))
         
         # Calculate Weighted Average Cost (ถัวเฉลี่ย)
         prod = c.execute('SELECT stock_qty, cost FROM Products_Services WHERE id = ?', (product_id,)).fetchone()
         if prod:
-            old_qty = prod['stock_qty']
-            if old_qty < 0:
-                old_qty = 0  # Ignore negative stock in cost calculation
+            actual_old_qty = prod['stock_qty']
             old_cost = prod['cost']
             
-            new_qty = old_qty + qty
-            if new_qty > 0:
-                new_avg_cost = ((old_qty * old_cost) + (qty * cost)) / new_qty
+            # จำนวนสต๊อกจริงที่จะอัปเดตเข้า DB (ล้างค่าที่ติดลบออกไปบางส่วนหรือทั้งหมด)
+            new_actual_qty = actual_old_qty + base_qty
+            
+            # การคำนวณต้นทุน: ถ้าสต๊อกเก่าติดลบ ถือว่ามูลค่าบัญชีเก่าเป็น 0 
+            # และของใหม่ที่เข้ามาจะถูกใช้ล้าง Backorder ด้วยต้นทุนล็อตนี้ทันที
+            if actual_old_qty <= 0:
+                new_avg_cost = base_cost
             else:
-                new_avg_cost = cost
+                # WAC ปกติ: (มูลค่าของเดิม + มูลค่าของใหม่) / จำนวนรวม
+                new_avg_cost = ((actual_old_qty * old_cost) + (base_qty * base_cost)) / new_actual_qty
                 
             c.execute('UPDATE Products_Services SET stock_qty = ?, cost = ? WHERE id = ?',
-                      (new_qty, new_avg_cost, product_id))
+                      (new_actual_qty, new_avg_cost, product_id))
     
     conn.commit()
     conn.close()
     return jsonify({"message": "Purchase completed", "purchase_id": purchase_id}), 201
 
 # --- Phase 3: Job Orders ---
+@app.route('/api/jobs/dt', methods=['GET'])
+def get_jobs_dt():
+    query_base = "SELECT * FROM Job_Orders"
+    search_cols = ['customer_name', 'details', 'status']
+    order_cols = ['id', 'timestamp', 'customer_name', 'details', 'status', 'due_date']
+    return generate_datatables_response(query_base, request.args, search_cols, order_cols)
+
 @app.route('/api/jobs', methods=['GET'])
 def get_jobs():
     conn = get_db_connection()
@@ -971,36 +1407,53 @@ def add_job():
     data = request.get_json()
     customer_name = data.get('customer_name')
     details = data.get('details')
-    qty = data.get('qty', 1)
-    deposit = data.get('deposit', 0)
+    qty = int(data.get('qty', 1))
+    deposit = float(data.get('deposit', 0))
     status = data.get('status', 'รอสินค้า')
-    
+    due_date = data.get('due_date') or None
+    price = float(data.get('price', 0))
+
     conn = get_db_connection()
     c = conn.cursor()
-    
+
     # Auto-add customer if not exists
     if customer_name:
         existing_cust = c.execute('SELECT id FROM Customers WHERE name = ?', (customer_name,)).fetchone()
         if not existing_cust:
             c.execute('INSERT INTO Customers (name, phone) VALUES (?, "")', (customer_name,))
-            
-    c.execute('INSERT INTO Job_Orders (customer_name, details, qty, deposit, status) VALUES (?, ?, ?, ?, ?)', (customer_name, details, qty, deposit, status))
+
+    c.execute(
+        'INSERT INTO Job_Orders (customer_name, details, qty, deposit, status, due_date, price) VALUES (?,?,?,?,?,?,?)',
+        (customer_name, details, qty, deposit, status, due_date, price)
+    )
     job_id = c.lastrowid
     conn.commit()
     conn.close()
+    log_action('ADD_JOB', f'เพิ่มคิวงาน #{job_id} - {customer_name}', 'Job', job_id)
     return jsonify({"message": "Job created", "job_id": job_id}), 201
 
 @app.route('/api/jobs/<int:job_id>', methods=['PUT'])
 def update_job_status(job_id):
     data = request.get_json() or {}
-    status = data.get('status')
-    
+
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('UPDATE Job_Orders SET status = ? WHERE id = ?', (status, job_id))
-    conn.commit()
+
+    updates, params = [], []
+    for field in ['status', 'due_date', 'price', 'details', 'qty', 'deposit']:
+        if field in data:
+            updates.append(f'{field} = ?')
+            val = data[field]
+            if field == 'due_date' and not val:
+                val = None
+            params.append(val)
+
+    if updates:
+        params.append(job_id)
+        c.execute(f'UPDATE Job_Orders SET {", ".join(updates)} WHERE id = ?', params)
+        conn.commit()
     conn.close()
-    return jsonify({"message": "Job status updated"})
+    return jsonify({"message": "Job updated"})
 
 @app.route('/api/jobs/<int:job_id>/complete', methods=['POST'])
 def complete_job(job_id):
@@ -1026,11 +1479,10 @@ def complete_job(job_id):
     # Check Stock for scanned items
     if items:
         for item in items:
-            if item.get('type') != 'Service':
-                p = c.execute('SELECT stock_qty, name FROM Products_Services WHERE id = ?', (item['id'],)).fetchone()
-                if p and p['stock_qty'] < item['qty']:
-                    conn.close()
-                    return jsonify({"message": f"สินค้า {p['name']} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
+            p = c.execute('SELECT stock_qty, name, type FROM Products_Services WHERE id = ?', (item['id'],)).fetchone()
+            if p and p['type'] != 'Service' and p['stock_qty'] < item['qty']:
+                conn.close()
+                return jsonify({"message": f"สินค้า {p['name']} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
 
     # Update job status
     c.execute("UPDATE Job_Orders SET status = 'ส่งมอบแล้ว' WHERE id = ?", (job_id,))
@@ -1041,23 +1493,26 @@ def complete_job(job_id):
     cust = c.execute("SELECT id FROM Customers WHERE name = ?", (job['customer_name'],)).fetchone()
     customer_id = cust['id'] if cust else None
     
-    # Generate Invoice No
-    import datetime
-    now = datetime.datetime.now()
-    yy = str(now.year + 543)[2:]
-    mm = f"{now.month:02d}"
-    prefix = f"INV{yy}{mm}-"
-    last_inv = c.execute("SELECT invoice_no FROM Sales WHERE invoice_no LIKE ? ORDER BY invoice_no DESC LIMIT 1", (prefix + '%',)).fetchone()
-    seq = int(last_inv['invoice_no'].split('-')[1]) + 1 if last_inv else 1
-    invoice_no = f"{prefix}{seq:04d}"
+    # Generate Invoice No — ใช้ helper function
+    invoice_no = generate_invoice_no()
     
     notes = f"จากบิลจองงาน #JOB-{job_id:04d}"
     
-    # Create Sale
-    c.execute('''
-        INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, notes) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, notes))
+    # Create Sale with Retry
+    for _attempt in range(3):
+        try:
+            c.execute('''
+                INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, notes) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, notes))
+            break
+        except sqlite3.IntegrityError as e:
+            if 'UNIQUE constraint failed: Sales.invoice_no' in str(e) and _attempt < 2:
+                invoice_no = generate_invoice_no()
+            else:
+                conn.close()
+                return jsonify({"message": "ไม่สามารถสร้างเลขบิลได้ กรุณาลองใหม่"}), 500
+    
     sale_id = c.lastrowid
     
     if payment_status == 'Unpaid' and customer_id:
@@ -1067,34 +1522,56 @@ def complete_job(job_id):
         ''', (customer_id, sale_id, total_amount))
     
     if items:
-        # If user scanned items, insert them and deduct stock
+        # If user scanned items, insert them and deduct stock (BOM-aware)
         for item in items:
             prod_id = item['id']
             qty = item['qty']
             price = item['price']
             
-            c.execute('''
-                INSERT INTO Sale_Items (sale_id, product_id, qty, price)
-                VALUES (?, ?, ?, ?)
-            ''', (sale_id, prod_id, qty, price))
+            prod_info = c.execute('SELECT type, cost FROM Products_Services WHERE id = ?', (prod_id,)).fetchone()
+            base_cost = prod_info['cost'] if prod_info else 0.0
+            bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?', (prod_id,)).fetchall()
             
-            c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, prod_id))
+            # Calculate item cost dynamically from BOM or use base cost
+            item_cost = 0.0
+            if bom_items:
+                for b in bom_items:
+                    raw_prod = c.execute('SELECT cost FROM Products_Services WHERE id = ?', (b['raw_material_id'],)).fetchone()
+                    raw_cost = raw_prod['cost'] if raw_prod else 0.0
+                    item_cost += (raw_cost * b['qty_required'])
+            else:
+                item_cost = base_cost
+            
+            c.execute('''
+                INSERT INTO Sale_Items (sale_id, product_id, qty, price, cost_price)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (sale_id, prod_id, qty, price, item_cost))
+            
+            # Stock deduction
+            if bom_items:
+                for b in bom_items:
+                    raw_qty = b['qty_required'] * qty
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (raw_qty, b['raw_material_id']))
+            elif prod_info and prod_info['type'] != 'Service':
+                c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, prod_id))
     else:
         # Fallback if no items scanned: use generic service
-        prod = c.execute("SELECT id FROM Products_Services WHERE name = 'งานบริการ (คิวงาน)'").fetchone()
+        prod = c.execute("SELECT id, cost FROM Products_Services WHERE name = 'งานบริการ (คิวงาน)'").fetchone()
         if not prod:
             c.execute('''
                 INSERT INTO Products_Services (name, type, price, cost) 
                 VALUES ('งานบริการ (คิวงาน)', 'Service', 0, 0)
             ''')
             prod_id = c.lastrowid
+            item_cost = 0.0
         else:
             prod_id = prod['id']
+            item_cost = prod['cost']
             
         c.execute('''
-            INSERT INTO Sale_Items (sale_id, product_id, qty, price)
-            VALUES (?, ?, 1, ?)
-        ''', (sale_id, prod_id, total_amount + discount))
+            INSERT INTO Sale_Items (sale_id, product_id, qty, price, cost_price)
+            VALUES (?, ?, 1, ?, ?)
+        ''', (sale_id, prod_id, total_amount + discount, item_cost))
     
     conn.commit()
     conn.close()
@@ -1110,6 +1587,19 @@ def cancel_job(job_id):
     return jsonify({"message": "Job cancelled"})
 
 # --- Phase 3: Expenses ---
+@app.route('/api/expenses/dt', methods=['GET'])
+def get_expenses_dt():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    query_base = "SELECT * FROM Expenses"
+    if start_date and end_date:
+        query_base += f" WHERE timestamp >= '{start_date} 00:00:00' AND timestamp <= '{end_date} 23:59:59'"
+        
+    search_cols = ['description', 'expense_type', 'payment_method']
+    order_cols = ['id', 'timestamp', 'description', 'amount', 'expense_type', 'payment_method']
+    return generate_datatables_response(query_base, request.args, search_cols, order_cols)
+
 @app.route('/api/expenses', methods=['GET'])
 def get_expenses():
     start_date = request.args.get('start_date')
@@ -1133,7 +1623,7 @@ def get_expenses():
         
         UNION ALL
         
-        SELECT id, timestamp, 'ซื้อสินค้าเข้าสต๊อก (PO #' || id || ')' as description, total_amount as amount, 'OPEX' as expense_type, 'N/A' as payment_method
+        SELECT id, timestamp, 'ซื้อสินค้าเข้าสต๊อก (PO #' || id || ')' as description, total_amount as amount, 'ซื้อสต็อก' as expense_type, payment_method
         FROM Purchases
         WHERE 1=1 {date_filter}
         
@@ -1201,8 +1691,6 @@ def add_customer():
     conn.close()
     return jsonify({"message": "เพิ่มข้อมูลลูกค้าสำเร็จ", "id": customer_id}), 201
 
-@app.route('/api/customers/<int:customer_id>/points', methods=['PUT'])
-
 @app.route('/api/customers/<int:customer_id>/allow_points', methods=['PUT'])
 def toggle_allow_points(customer_id):
     data = request.get_json()
@@ -1218,6 +1706,9 @@ def update_points(customer_id):
     data = request.get_json()
     action = data.get('action') # 'add' or 'redeem'
     points = int(data.get('points', 0))
+    
+    if points <= 0:
+        return jsonify({"message": "จำนวนแต้มต้องมากกว่า 0"}), 400
     
     conn = get_db_connection()
     c = conn.cursor()
@@ -1264,7 +1755,7 @@ def pay_bill(sale_id):
         return jsonify({'error': 'Not found'}), 404
         
     orig_date = orig['timestamp'].split(' ')[0]
-    today_date = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+    today_date = datetime.datetime.now().strftime('%Y-%m-%d')  # ใช้ local time (UTC+7) แทน UTC
     
     credit = conn.execute('SELECT * FROM Customer_Credit WHERE sale_id = ?', (sale_id,)).fetchone()
     if not credit:
@@ -1359,6 +1850,20 @@ def purchase_receipt(purchase_id):
     
     return render_template('purchase_receipt.html', purchase=dict(purchase), items=[dict(ix) for ix in items])
 
+@app.route('/api/sales/dt', methods=['GET'])
+def get_sales_dt():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    query_base = "SELECT * FROM Sales"
+    if start_date and end_date:
+        query_base += f" WHERE timestamp >= '{start_date} 00:00:00' AND timestamp <= '{end_date} 23:59:59'"
+        
+    search_cols = ['invoice_no', 'payment_method', 'payment_status', 'timestamp']
+    order_cols = ['invoice_no', 'timestamp', 'payment_status', 'total_amount']
+    
+    return generate_datatables_response(query_base, request.args, search_cols, order_cols)
+
 # --- Phase 5: Reporting ---
 @app.route('/api/reports', methods=['GET'])
 def get_reports():
@@ -1379,12 +1884,11 @@ def get_reports():
     owner_draw_query = "SELECT SUM(amount) as total_owner_draw FROM Expenses WHERE expense_type = 'Owner Draw'"
     purchases_query = "SELECT SUM(total_amount) as total_purchases FROM Purchases WHERE 1=1"
     cost_query = """
-        SELECT SUM(si.qty * p.cost) as total_cost 
+        SELECT SUM(si.qty * si.cost_price) as total_cost 
         FROM Sale_Items si 
         JOIN Sales s ON si.sale_id = s.id 
         JOIN Products_Services p ON si.product_id = p.id 
         WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')
-        AND p.type != 'Brewed Drink'
     """
     recent_sales_query = "SELECT * FROM Sales WHERE 1=1"
     item_sales_query = """
@@ -1493,7 +1997,9 @@ def get_reports():
     
     conn.close()
     
-    net_profit = total_revenue - total_expenses + total_adjustment
+    # สูตร P&L: รายได้สุทธิ − ต้นทุนขาย (COGS) − ค่าใช้จ่าย OPEX ± Inventory Adjustment
+    # (Owner Draw เป็นการลดส่วนทุนในงบดุล ไม่ใช่ค่าใช้จ่ายดำเนินงาน จึงไม่นำมาหักลบ)
+    net_profit = total_revenue - total_cost - total_expenses + total_adjustment
     
     return jsonify({
         "total_revenue": total_revenue,
@@ -1519,44 +2025,13 @@ def get_reports():
 from flask import send_file
 
 @app.route('/api/backup/local', methods=['GET'])
+@require_role('Admin')
 def backup_local():
-    import csv, zipfile, io
-    import datetime
-    
     conn = get_db_connection()
-    tables = ['Products_Services', 'Customers', 'Sales', 'Sale_Items', 'Purchases', 'Purchase_Items', 'Expenses', 'Stock_WriteOffs', 'Customer_Credit']
-    
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w') as zf:
-        # Also backup the sqlite file itself for complete backup
-        try:
-            if os.path.exists(DB_FILE):
-                with open(DB_FILE, 'rb') as f:
-                    db_data = f.read()
-                    zf.writestr('pjcopy.db', db_data)
-                    zf.writestr('xerox.db', db_data)
-        except Exception:
-            pass
-            
-        for table in tables:
-            rows = conn.execute(f"SELECT * FROM {table}").fetchall()
-            if not rows:
-                continue
-            
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer)
-            writer.writerow(rows[0].keys())
-            for row in rows:
-                writer.writerow(row)
-                
-            zf.writestr(f"{table}.csv", csv_buffer.getvalue())
-            
+    memory_file = create_backup_zip(conn)
     conn.close()
-    memory_file.seek(0)
-    
     now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f'pjcopy_backup_{now_str}.zip'
-    
     return send_file(
         memory_file,
         mimetype='application/zip',
@@ -1565,48 +2040,18 @@ def backup_local():
     )
 
 @app.route('/api/backup/gdrive', methods=['POST'])
+@require_role('Admin')
 def backup_gdrive():
-    import csv, zipfile, io
-    import datetime
     try:
         from gdrive_upload import upload_to_drive
     except ImportError:
         return jsonify({"message": "Server error: Google API client libraries not installed."}), 500
-        
+
     conn = get_db_connection()
-    tables = ['Products_Services', 'Customers', 'Sales', 'Sale_Items', 'Purchases', 'Purchase_Items', 'Expenses', 'Stock_WriteOffs', 'Customer_Credit']
-    
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w') as zf:
-        # Also backup the sqlite file itself for complete backup
-        try:
-            if os.path.exists(DB_FILE):
-                with open(DB_FILE, 'rb') as f:
-                    db_data = f.read()
-                    zf.writestr('pjcopy.db', db_data)
-                    zf.writestr('xerox.db', db_data)
-        except Exception:
-            pass
-            
-        for table in tables:
-            rows = conn.execute(f"SELECT * FROM {table}").fetchall()
-            if not rows:
-                continue
-            
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer)
-            writer.writerow(rows[0].keys())
-            for row in rows:
-                writer.writerow(row)
-                
-            zf.writestr(f"{table}.csv", csv_buffer.getvalue())
-            
+    memory_file = create_backup_zip(conn)
     conn.close()
-    memory_file.seek(0)
-    
     now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f'pjcopy_backup_{now_str}.zip'
-    
     try:
         link = upload_to_drive(memory_file, filename)
         return jsonify({"message": "อัพโหลดไปยัง Google Drive สำเร็จ!", "link": link})
@@ -1614,6 +2059,7 @@ def backup_gdrive():
         return jsonify({"message": f"Error: {str(e)}"}), 500
 
 @app.route('/api/restore', methods=['POST'])
+@require_role('Admin')
 def restore_backup():
     import zipfile, io, os, shutil
     
@@ -1625,7 +2071,11 @@ def restore_backup():
         return jsonify({"message": "No file selected"}), 400
         
     try:
-        memory_file = io.BytesIO(file.read())
+        raw_data = file.read()
+        if len(raw_data) > 100 * 1024 * 1024:  # Max 100MB for uploaded ZIP
+            return jsonify({"message": "ไฟล์ Backup มีขนาดใหญ่เกินไป (สูงสุด 100MB)"}), 400
+
+        memory_file = io.BytesIO(raw_data)
         with zipfile.ZipFile(memory_file, 'r') as zf:
             db_entry = None
             for candidate in ['pjcopy.db', 'xerox.db']:
@@ -1635,6 +2085,10 @@ def restore_backup():
                     
             if not db_entry:
                 return jsonify({"message": "ไฟล์ Backup ไม่ถูกต้อง (ไม่พบไฟล์ฐานข้อมูล)"}), 400
+                
+            info = zf.getinfo(db_entry)
+            if info.file_size > 500 * 1024 * 1024:  # Max 500MB extracted DB
+                return jsonify({"message": "ฐานข้อมูลมีขนาดใหญ่เกินกว่าที่ระบบจะกู้คืนได้"}), 400
                 
             if os.path.exists(DB_FILE):
                 shutil.copy2(DB_FILE, 'xerox_db.bak')
@@ -1649,6 +2103,7 @@ def restore_backup():
         return jsonify({"message": f"Error: {str(e)}"}), 500
 
 @app.route('/api/maintenance/vacuum', methods=['POST'])
+@require_role('Admin')
 def vacuum_database():
     try:
         size_before = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
@@ -1668,6 +2123,7 @@ def vacuum_database():
         return jsonify({"message": f"เกิดข้อผิดพลาด: {str(e)}"}), 500
 
 @app.route('/api/shutdown', methods=['POST'])
+@require_role('Admin')
 def shutdown_server():
     import os, signal
     # Send interrupt signal to the current process to shut it down gracefully
@@ -1675,14 +2131,311 @@ def shutdown_server():
     return jsonify({"message": "กำลังปิดระบบ..."})
 
 
+# =============================================================================
+# ฟีเจอร์ใหม่: Settings / Audit Log / Expenses CRUD / Promotions / BOM / Reorder / Business Date
+# =============================================================================
+
+# ---- Settings ----
+@app.route('/settings')
+def settings_page():
+    if session.get('role') != 'Admin':
+        return redirect(url_for('index'))
+    return render_template('settings.html')
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings_api():
+    conn = get_db_connection()
+    rows = conn.execute('SELECT key, value FROM Settings').fetchall()
+    conn.close()
+    return jsonify({r['key']: r['value'] for r in rows})
+
+@app.route('/api/settings', methods=['PUT'])
+@require_role('Admin')
+def update_settings_api():
+    data = request.get_json() or {}
+    conn = get_db_connection()
+    for key, value in data.items():
+        conn.execute('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)', (key, str(value)))
+    conn.commit()
+    conn.close()
+    log_action('UPDATE_SETTINGS', f'Updated {len(data)} settings keys')
+    return jsonify({'message': 'บันทึกการตั้งค่าสำเร็จ'})
+
+# ---- Audit Log ----
+@app.route('/api/audit-log', methods=['GET'])
+@require_role('Admin')
+def get_audit_log():
+    limit = min(int(request.args.get('limit', 100)), 500)
+    conn = get_db_connection()
+    rows = conn.execute('SELECT * FROM Audit_Log ORDER BY timestamp DESC LIMIT ?', (limit,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+# ---- Expense Edit / Delete ----
+@app.route('/api/expenses/<int:expense_id>', methods=['PUT'])
+def edit_expense(expense_id):
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json() or {}
+    description = data.get('description')
+    amount = data.get('amount')
+    expense_type = data.get('expense_type', 'OPEX')
+    payment_method = data.get('payment_method', 'Cash')
+    if not description or amount is None:
+        return jsonify({'message': 'ข้อมูลไม่ครบถ้วน'}), 400
+    conn = get_db_connection()
+    conn.execute(
+        'UPDATE Expenses SET description=?, amount=?, expense_type=?, payment_method=? WHERE id=?',
+        (description, float(amount), expense_type, payment_method, expense_id)
+    )
+    conn.commit()
+    conn.close()
+    log_action('EDIT_EXPENSE', f'Edited expense #{expense_id}', 'Expense', expense_id)
+    return jsonify({'message': 'แก้ไขรายการค่าใช้จ่ายสำเร็จ'})
+
+@app.route('/api/expenses/<int:expense_id>', methods=['DELETE'])
+def delete_expense(expense_id):
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    conn = get_db_connection()
+    exp = conn.execute('SELECT description FROM Expenses WHERE id=?', (expense_id,)).fetchone()
+    conn.execute('DELETE FROM Expenses WHERE id=?', (expense_id,))
+    conn.commit()
+    conn.close()
+    desc = exp['description'] if exp else f'#{expense_id}'
+    log_action('DELETE_EXPENSE', f'Deleted expense: {desc}', 'Expense', expense_id)
+    return jsonify({'message': 'ลบรายการค่าใช้จ่ายสำเร็จ'})
+
+# ---- Promotions CRUD ----
+@app.route('/promotions')
+def promotions_page():
+    return render_template('promotions.html')
+
+@app.route('/api/promotions', methods=['GET'])
+def get_promotions():
+    conn = get_db_connection()
+    promos = conn.execute('SELECT * FROM Promotions ORDER BY is_active DESC, id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(p) for p in promos])
+
+@app.route('/api/promotions', methods=['POST'])
+def add_promotion():
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json() or {}
+    name = data.get('name')
+    promo_type = data.get('promo_type')
+    discount_value = float(data.get('discount_value', 0))
+    condition_type = data.get('condition_type', '')
+    condition_value = float(data.get('condition_value', 0))
+    is_active = int(data.get('is_active', 1))
+    if not name or not promo_type:
+        return jsonify({'message': 'กรุณาระบุชื่อและประเภทโปรโมชั่น'}), 400
+    conn = get_db_connection()
+    conn.execute(
+        'INSERT INTO Promotions (name, promo_type, discount_value, condition_type, condition_value, is_active) VALUES (?,?,?,?,?,?)',
+        (name, promo_type, discount_value, condition_type, condition_value, is_active)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'เพิ่มโปรโมชั่นสำเร็จ'}), 201
+
+@app.route('/api/promotions/<int:promo_id>', methods=['PUT'])
+def update_promotion(promo_id):
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json() or {}
+    conn = get_db_connection()
+    conn.execute(
+        'UPDATE Promotions SET name=?,promo_type=?,discount_value=?,condition_type=?,condition_value=?,is_active=? WHERE id=?',
+        (data.get('name'), data.get('promo_type'), float(data.get('discount_value', 0)),
+         data.get('condition_type', ''), float(data.get('condition_value', 0)),
+         int(data.get('is_active', 1)), promo_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'อัปเดตโปรโมชั่นสำเร็จ'})
+
+@app.route('/api/promotions/<int:promo_id>', methods=['DELETE'])
+def delete_promotion(promo_id):
+    if session.get('role') not in ('Admin',):
+        return jsonify({'error': 'Access denied'}), 403
+    conn = get_db_connection()
+    conn.execute('DELETE FROM Promotions WHERE id=?', (promo_id,))
+    conn.commit()
+    conn.close()
+    log_action('DELETE_PROMOTION', f'Deleted promo #{promo_id}', 'Promotion', promo_id)
+    return jsonify({'message': 'ลบโปรโมชั่นสำเร็จ'})
+
+@app.route('/api/promotions/<int:promo_id>/toggle', methods=['POST'])
+def toggle_promotion(promo_id):
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    conn = get_db_connection()
+    conn.execute('UPDATE Promotions SET is_active = 1 - is_active WHERE id=?', (promo_id,))
+    conn.commit()
+    promo = conn.execute('SELECT is_active FROM Promotions WHERE id=?', (promo_id,)).fetchone()
+    conn.close()
+    status = 'เปิดใช้งาน' if promo and promo['is_active'] else 'ปิดใช้งาน'
+    return jsonify({'message': f'โปรโมชั่น{status}แล้ว', 'is_active': promo['is_active'] if promo else 0})
+
+# ---- BOM CRUD ----
+@app.route('/api/bom', methods=['GET'])
+def get_all_bom():
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT b.id, b.product_id, b.raw_material_id, b.qty_required,
+               p1.name AS product_name, p2.name AS material_name,
+               p2.stock_qty AS material_stock, p2.type AS material_type
+        FROM BOM b
+        JOIN Products_Services p1 ON b.product_id = p1.id
+        JOIN Products_Services p2 ON b.raw_material_id = p2.id
+        ORDER BY p1.name, p2.name
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/bom/<int:product_id>', methods=['GET'])
+def get_bom_by_product(product_id):
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT b.id, b.raw_material_id, b.qty_required,
+               p.name AS material_name, p.stock_qty, p.type
+        FROM BOM b
+        JOIN Products_Services p ON b.raw_material_id = p.id
+        WHERE b.product_id = ?
+    ''', (product_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/bom', methods=['POST'])
+def add_bom_item():
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json() or {}
+    product_id = data.get('product_id')
+    raw_material_id = data.get('raw_material_id')
+    qty_required = float(data.get('qty_required', 1))
+    if not product_id or not raw_material_id:
+        return jsonify({'message': 'กรุณาระบุสินค้าและวัตถุดิบ'}), 400
+    if product_id == raw_material_id:
+        return jsonify({'message': 'สินค้าและวัตถุดิบต้องไม่ใช่ชิ้นเดียวกัน'}), 400
+    conn = get_db_connection()
+    existing = conn.execute('SELECT id FROM BOM WHERE product_id=? AND raw_material_id=?', (product_id, raw_material_id)).fetchone()
+    if existing:
+        conn.execute('UPDATE BOM SET qty_required=? WHERE id=?', (qty_required, existing['id']))
+        msg = 'อัปเดต BOM สำเร็จ'
+    else:
+        conn.execute('INSERT INTO BOM (product_id, raw_material_id, qty_required) VALUES (?,?,?)', (product_id, raw_material_id, qty_required))
+        msg = 'เพิ่ม BOM สำเร็จ'
+    conn.commit()
+    conn.close()
+    return jsonify({'message': msg}), 201
+
+@app.route('/api/bom/<int:bom_id>', methods=['DELETE'])
+def delete_bom_item(bom_id):
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    conn = get_db_connection()
+    conn.execute('DELETE FROM BOM WHERE id=?', (bom_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'ลบ BOM สำเร็จ'})
+
+# ---- Reorder Alerts ----
+@app.route('/api/reorder-alerts', methods=['GET'])
+def get_reorder_alerts():
+    conn = get_db_connection()
+    products = conn.execute('''
+        SELECT id, name, type, barcode, stock_qty, reorder_level,
+               (reorder_level - stock_qty) AS deficit
+        FROM Products_Services
+        WHERE is_active = 1 AND type != 'Service' AND stock_qty <= reorder_level
+        ORDER BY deficit DESC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(p) for p in products])
+
+# ---- Daily Closing (Business_Date) ----
+@app.route('/api/business/current', methods=['GET'])
+def get_current_business():
+    today = datetime.date.today().isoformat()
+    conn = get_db_connection()
+    record = conn.execute(
+        'SELECT * FROM Business_Date WHERE current_date = ? ORDER BY id DESC LIMIT 1', (today,)
+    ).fetchone()
+    conn.close()
+    if record:
+        return jsonify(dict(record))
+    return jsonify({'is_closed': 1, 'current_date': today, 'starting_cash': 0, 'id': None})
+
+@app.route('/api/business/open', methods=['POST'])
+def open_business_day():
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json() or {}
+    starting_cash = float(data.get('starting_cash', 0))
+    today = datetime.date.today().isoformat()
+    conn = get_db_connection()
+    existing = conn.execute('SELECT id FROM Business_Date WHERE current_date = ?', (today,)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'message': 'วันนี้เปิดร้านแล้ว'}), 400
+    conn.execute(
+        'INSERT INTO Business_Date (current_date, is_closed, starting_cash) VALUES (?, 0, ?)',
+        (today, starting_cash)
+    )
+    conn.commit()
+    conn.close()
+    log_action('OPEN_DAY', f'เปิดร้าน วันที่ {today} เงินตั้งต้น {starting_cash:.2f} บาท')
+    return jsonify({'message': f'เปิดร้านสำเร็จ 📅 {today}', 'date': today})
+
+@app.route('/api/business/close', methods=['POST'])
+def close_business_day():
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    today = datetime.date.today().isoformat()
+    conn = get_db_connection()
+    record = conn.execute(
+        'SELECT id FROM Business_Date WHERE current_date = ? AND is_closed = 0', (today,)
+    ).fetchone()
+    if not record:
+        conn.close()
+        return jsonify({'message': 'ไม่พบรายการเปิดร้านวันนี้ หรือปิดแล้ว'}), 404
+    conn.execute('UPDATE Business_Date SET is_closed = 1 WHERE id = ?', (record['id'],))
+    conn.commit()
+    conn.close()
+    log_action('CLOSE_DAY', f'ปิดร้าน วันที่ {today}')
+    return jsonify({'message': f'ปิดร้านสำเร็จ 🔒 {today}', 'date': today})
+
+# ---- Job History ----
+@app.route('/api/jobs/history', methods=['GET'])
+def get_jobs_history():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    conn = get_db_connection()
+    query = 'SELECT * FROM Job_Orders WHERE 1=1'
+    params = []
+    if start_date and end_date:
+        query += ' AND timestamp >= ? AND timestamp <= ?'
+        params.extend([f'{start_date} 00:00:00', f'{end_date} 23:59:59'])
+    query += ' ORDER BY timestamp DESC LIMIT 200'
+    jobs = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(j) for j in jobs])
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     import traceback
     traceback.print_exc()
-    return jsonify({"error": str(e)}), 400
+    # Log error จริงไว้ใน console แต่ไม่ส่ง internal detail กลับไปยัง client
+    app.logger.error(f'Unhandled exception: {e}')
+    return jsonify({"error": "เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง"}), 500
 
 
 @app.route('/api/users', methods=['POST'])
+@require_role('Admin')
 def add_user():
     data = request.get_json() or {}
     username = data.get('username')
@@ -1692,12 +2445,129 @@ def add_user():
     conn = get_db_connection()
     c = conn.cursor()
     try:
-        c.execute('INSERT INTO Users (username, pin, role) VALUES (?, ?, ?)', (username, pin, role))
+        c.execute('INSERT INTO Users (username, pin, role) VALUES (?, ?, ?)', (username, generate_password_hash(pin), role))
         conn.commit()
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"message": "User created"}), 201
 
+@app.route('/api/users', methods=['GET'])
+@require_role('Admin')
+def get_users():
+    conn = get_db_connection()
+    users = conn.execute('SELECT id, username, role FROM Users ORDER BY id').fetchall()
+    conn.close()
+    return jsonify([dict(u) for u in users])
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@require_role('Admin')
+def delete_user(user_id):
+    if session.get('user_id') == user_id:
+        return jsonify({"error": "ไม่สามารถลบบัญชีตัวเองได้"}), 400
+    conn = get_db_connection()
+    user = conn.execute('SELECT username FROM Users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({"error": "ไม่พบผู้ใช้"}), 404
+    conn.execute('DELETE FROM Users WHERE id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+    log_action('DELETE_USER', f'ลบผู้ใช้ {user["username"]}', 'User', user_id)
+    return jsonify({"message": "ลบผู้ใช้สำเร็จ"})
+
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+@require_role('Admin')
+def update_user(user_id):
+    data = request.get_json() or {}
+    conn = get_db_connection()
+    updates, params = [], []
+    if 'username' in data:
+        updates.append('username = ?')
+        params.append(data['username'])
+    if 'role' in data:
+        updates.append('role = ?')
+        params.append(data['role'])
+    if 'pin' in data and data['pin']:
+        updates.append('pin = ?')
+        params.append(generate_password_hash(data['pin']))
+    if not updates:
+        conn.close()
+        return jsonify({"error": "ไม่มีข้อมูลที่ต้องแก้ไข"}), 400
+    params.append(user_id)
+    conn.execute(f'UPDATE Users SET {", ".join(updates)} WHERE id = ?', params)
+    conn.commit()
+    conn.close()
+    log_action('UPDATE_USER', f'แก้ไขผู้ใช้ #{user_id}', 'User', user_id)
+    return jsonify({"message": "แก้ไขผู้ใช้สำเร็จ"})
+
+@app.route('/api/customers/<int:customer_id>', methods=['PUT'])
+def update_customer(customer_id):
+    if session.get('role') not in ('Admin', 'Manager'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json() or {}
+    name = data.get('name')
+    phone = data.get('phone')
+    if not name:
+        return jsonify({"message": "กรุณาระบุชื่อลูกค้า"}), 400
+    conn = get_db_connection()
+    # Check duplicate (excluding self)
+    existing = conn.execute(
+        'SELECT id FROM Customers WHERE (name = ? OR (phone != "" AND phone = ?)) AND id != ?',
+        (name, phone or '', customer_id)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({"message": "มีชื่อลูกค้า หรือ เบอร์โทรนี้ ในระบบแล้ว!"}), 400
+    conn.execute('UPDATE Customers SET name = ?, phone = ? WHERE id = ?', (name, phone or '', customer_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "แก้ไขข้อมูลลูกค้าสำเร็จ"})
+
+@app.route('/api/customers/<int:customer_id>', methods=['DELETE'])
+@require_role('Admin')
+def delete_customer(customer_id):
+    conn = get_db_connection()
+    # Check for unpaid bills
+    unpaid = conn.execute(
+        "SELECT COUNT(*) as cnt FROM Customer_Credit WHERE customer_id = ? AND status = 'Unpaid'",
+        (customer_id,)
+    ).fetchone()
+    if unpaid and unpaid['cnt'] > 0:
+        conn.close()
+        return jsonify({"message": "ไม่สามารถลบลูกค้าที่ยังมียอดค้างชำระได้"}), 400
+    cust = conn.execute('SELECT name FROM Customers WHERE id = ?', (customer_id,)).fetchone()
+    if not cust:
+        conn.close()
+        return jsonify({"error": "ไม่พบลูกค้า"}), 404
+    conn.execute('DELETE FROM Customers WHERE id = ?', (customer_id,))
+    conn.commit()
+    conn.close()
+    log_action('DELETE_CUSTOMER', f'ลบลูกค้า {cust["name"]}', 'Customer', customer_id)
+    return jsonify({"message": "ลบลูกค้าสำเร็จ"})
+
+@app.route('/api/sales/<int:sale_id>', methods=['GET'])
+def get_sale_detail(sale_id):
+    conn = get_db_connection()
+    sale = conn.execute('''
+        SELECT s.*, c.name as customer_name 
+        FROM Sales s 
+        LEFT JOIN Customers c ON s.customer_id = c.id 
+        WHERE s.id = ?
+    ''', (sale_id,)).fetchone()
+    if not sale:
+        conn.close()
+        return jsonify({"error": "ไม่พบบิล"}), 404
+    items = conn.execute('''
+        SELECT si.qty, si.price, p.name, p.type, p.barcode
+        FROM Sale_Items si
+        JOIN Products_Services p ON si.product_id = p.id
+        WHERE si.sale_id = ?
+    ''', (sale_id,)).fetchall()
+    conn.close()
+    return jsonify({
+        'sale': dict(sale),
+        'items': [dict(i) for i in items]
+    })
 
 def crc16_ccitt(data):
     crc = 0xFFFF
@@ -1739,7 +2609,7 @@ def generate_qr():
         
     data = request.get_json() or {}
     amount = data.get('amount')
-    promptpay_number = '0812345678' # เบอร์สมมุติตามที่ขอ
+    promptpay_number = get_setting('promptpay_number', '0812345678')
     
     try:
         payload = generate_promptpay_payload(promptpay_number, amount)
@@ -1761,9 +2631,9 @@ def add_header(r):
     r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     r.headers["Pragma"] = "no-cache"
     r.headers["Expires"] = "0"
-    r.headers['Cache-Control'] = 'public, max-age=0'
     return r
 
 if __name__ == '__main__':
     init_db()
+    migrate_pins_to_hash()  # อัปเกรด PIN เก่าให้เป็น hashed (ทำงานครั้งเดียว)
     app.run(host='0.0.0.0', debug=True, port=5000)

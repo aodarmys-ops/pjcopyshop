@@ -269,11 +269,15 @@
             if (existing) {
                 existing.packs += 1;
             } else {
+                const multiplier = product.conversion_rate || 1.0;
                 cart.push({
                     id: product.id,
                     name: product.name,
-                    cost_per_pack: product.cost > 0 ? product.cost : 0, 
-                    pieces_per_pack: 1,
+                    brand: product.brand,
+                    cost_per_pack: product.cost > 0 ? (product.cost * multiplier) : 0, 
+                    pieces_per_pack: multiplier,
+                    buy_unit: product.purchase_unit || 'กล่อง',
+                    base_unit: product.base_unit || 'ชิ้น',
                     packs: 1
                 });
             }
@@ -301,10 +305,16 @@
                             ${item.brand ? `<small class="text-muted">ยี่ห้อ: ${escapeHTML(item.brand)}</small>` : ''}
                         </td>
                         <td style="width: 100px;">
-                            <input type="number" class="form-control text-center fw-bold" value="${escapeHTML(item.packs)}" onchange="updateCart(${item.id}, 'packs', this.value)">
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center fw-bold" value="${escapeHTML(item.packs)}" onchange="updateCart(${item.id}, 'packs', this.value)">
+                                <span class="input-group-text">${escapeHTML(item.buy_unit)}</span>
+                            </div>
                         </td>
-                        <td style="width: 100px;">
-                            <input type="number" class="form-control text-center fw-bold" value="${escapeHTML(item.pieces_per_pack)}" onchange="updateCart(${item.id}, 'pieces', this.value)">
+                        <td style="width: 120px;">
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center fw-bold" value="${escapeHTML(item.pieces_per_pack)}" onchange="updateCart(${item.id}, 'pieces', this.value)">
+                                <span class="input-group-text">${escapeHTML(item.base_unit)}</span>
+                            </div>
                         </td>
                         <td style="width: 120px;">
                             <div class="input-group input-group-sm">
@@ -365,8 +375,10 @@
                 payment_method: pMethod,
                 items: cart.map(item => ({
                     id: item.id,
-                    qty: item.packs * item.pieces_per_pack,
-                    cost: item.cost_per_pack / item.pieces_per_pack
+                    qty: item.packs,
+                    cost: item.cost_per_pack,
+                    buy_unit: item.buy_unit,
+                    multiplier: item.pieces_per_pack
                 }))
             };
 
@@ -490,7 +502,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 

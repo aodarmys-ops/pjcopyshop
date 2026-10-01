@@ -148,6 +148,7 @@
                     <div class="table-responsive">
                         <table id="customerDataTable" class="table table-hover align-middle mt-2">
                             <thead class="table-light">
+                                <tr>
                                     <th>ชื่อลูกค้า</th>
                                     <th>เบอร์โทร</th>
                                     <th class="text-center">แต้มสะสม</th>
@@ -456,7 +457,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 

@@ -231,10 +231,10 @@
 
 
                     <div class="d-flex gap-2">
-                        <button class="btn btn-warning btn-lg fw-bold rounded-pill shadow w-50" onclick="checkout(true)">
+                        <button class="btn btn-warning btn-lg fw-bold rounded-pill shadow w-50" id="btnHold" onclick="checkout(true)">
                             ⏸ พักบิล
                         </button>
-                        <button class="btn btn-success btn-lg fw-bold rounded-pill shadow w-50" onclick="checkout(false)">
+                        <button class="btn btn-success btn-lg fw-bold rounded-pill shadow w-50" id="btnCheckout" onclick="checkout(false)">
                             ชำระเงิน
                         </button>
                     </div>
@@ -459,7 +459,7 @@
                     let li = document.createElement('li');
                     li.className = 'list-group-item list-group-item-action cursor-pointer';
                     const brandText = p.brand ? ` <span class="badge bg-secondary ms-1">${escapeHTML(p.brand)}</span>` : '';
-                    li.innerHTML = `<strong>${escapeHTML(p.name)}</strong>${brandText} <small class="text-muted ms-1">[${escapeHTML(p.barcode || 'ไม่มีบาร์โค้ด')}]</small> <span class="badge bg-primary float-end">฿${p.price}</span>`;
+                    li.innerHTML = `<strong>${escapeHTML(p.name)}</strong>${brandText} <small class="text-muted ms-1">[${escapeHTML(p.barcode || 'ไม่มีบาร์โค้ด')}]</small> <span class="badge bg-primary float-end">${p.price}</span>`;
                     li.onclick = () => {
                         addToCart(p);
                         bInput.value = '';
@@ -671,7 +671,20 @@
                 alert("ตะกร้าสินค้าว่างเปล่า!");
                 return;
             }
-            
+
+            // --- Loading State ---
+            const btnHold = document.getElementById('btnHold');
+            const btnCheckout = document.getElementById('btnCheckout');
+            const originalHold = btnHold.innerHTML;
+            const originalCheckout = btnCheckout.innerHTML;
+            btnHold.disabled = true;
+            btnCheckout.disabled = true;
+            if (isHold) {
+                btnHold.innerHTML = '⏳ กำลังพักบิล...';
+            } else {
+                btnCheckout.innerHTML = '⏳ กำลังบันทึก...';
+            }
+
             const method = document.getElementById('paymentMethod').value;
             let status = document.getElementById('paymentStatus').value;
             if (isHold) status = 'Hold';
@@ -679,58 +692,76 @@
             
             const payload = {
                 discount: parseFloat(document.getElementById('discountInput').value) || 0,
-                payment_method: method,
+                payment_method: isHold ? 'Cash' : method,
                 payment_status: status,
                 split_cash: parseFloat(document.getElementById('splitCash').value) || 0,
                 split_transfer: parseFloat(document.getElementById('splitTransfer').value) || 0,
                 notes: '-',
                 customer_id: customerId || null,
-                redeemed_points: totalRedeemedPoints,
+                redeemed_points: isHold ? 0 : totalRedeemedPoints,
                 items: cart
             };
 
-            const res = await fetch('/api/sales', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            try {
+                const res = await fetch('/api/sales', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
 
-            if (res.ok) {
-                let msg = "";
-                if (isHold) {
-                    msg = "พักบิลสำเร็จ!\n(รายการถูกบันทึกไว้ชั่วคราวและยังไม่ตัดสต๊อก)";
-                } else {
-                    msg = "ทำรายการสำเร็จ!\n\n";
-                    if(method === 'Cash') {
-                        msg += "➡️ สั่งเปิดลิ้นชักเก็บเงิน (Cash Drawer)\n";
+                const data = await res.json();
+
+                if (res.ok) {
+                    let msg = "";
+                    if (isHold) {
+                        msg = "✅ พักบิลสำเร็จ!\n(รายการถูกบันทึกไว้ชั่วคราว ยังไม่ตัดสต๊อก)";
+                    } else {
+                        msg = "✅ ทำรายการสำเร็จ!\n\n";
+                        if(method === 'Cash') {
+                            msg += "➡️ สั่งเปิดลิ้นชักเก็บเงิน (Cash Drawer)\n";
+                        }
+                        msg += "ระบบได้ตัดสต๊อกสินค้าเรียบร้อยแล้ว\n(สามารถพิมพ์ใบเสร็จย้อนหลังได้ที่หน้ารายงาน)";
                     }
-                    msg += "ระบบได้ตัดสต๊อกสินค้าเรียบร้อยแล้ว\n(สามารถพิมพ์ใบเสร็จย้อนหลังได้ที่หน้ารายงาน)";
+                    
+                    alert(msg);
+                    
+                    cart = [];
+                    totalRedeemedPoints = 0;
+                    renderCart();
+                    document.getElementById('barcodeInput').value = '';
+                    document.getElementById('discountInput').value = 0;
+                    
+                    // Properly reset TomSelect UI
+                    if(tomSelectInstance) {
+                        tomSelectInstance.setValue('');
+                    }
+                    document.getElementById('customerSelect').value = '';
+                    handleCustomerSelect(); // reset points UI
+                    
+                    // Reset payment status and method to default
+                    document.getElementById('paymentStatus').value = 'Paid';
+                    togglePaymentStatus();
+                    document.getElementById('paymentMethod').value = 'Cash';
+                    toggleSplitPayment();
+                    document.getElementById('splitCash').value = 0;
+                    document.getElementById('splitTransfer').value = 0;
+                    
+                    // reload customers to get updated points
+                    await loadCustomers();
+                    
+                    document.getElementById('barcodeInput').focus();
+                } else {
+                    // แสดง error message จาก server
+                    alert('❌ เกิดข้อผิดพลาด:\n' + (data.message || data.error || 'กรุณาลองใหม่อีกครั้ง'));
                 }
-                
-                alert(msg);
-                
-                cart = [];
-                totalRedeemedPoints = 0;
-                renderCart();
-                document.getElementById('barcodeInput').value = '';
-                
-                // Properly reset TomSelect UI
-                if(tomSelectInstance) {
-                    tomSelectInstance.setValue('');
-                }
-                document.getElementById('customerSelect').value = '';
-                handleCustomerSelect(); // reset points UI
-                
-                // Reset payment status and method to default
-                document.getElementById('paymentStatus').value = 'Paid';
-                togglePaymentStatus();
-                document.getElementById('paymentMethod').value = 'Cash';
-                toggleSplitPayment();
-                
-                // reload customers to get updated points
-                await loadCustomers();
-                
-                document.getElementById('barcodeInput').focus();
+            } catch (err) {
+                alert('❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์\n' + err.message);
+            } finally {
+                // Restore button state
+                btnHold.disabled = false;
+                btnCheckout.disabled = false;
+                btnHold.innerHTML = originalHold;
+                btnCheckout.innerHTML = originalCheckout;
             }
         }
 
@@ -761,7 +792,7 @@
                     <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                         <div style="flex-grow: 1;">
                             <strong>${b.invoice_no}</strong> <small class="text-muted ms-2">${b.timestamp}</small>
-                            <div class="text-muted small mt-1">สินค้า ${b.items.length} รายการ | ยอดชำระสุทธิ: ฿${b.total_amount}</div>
+                            <div class="text-muted small mt-1">สินค้า ${b.items.length} รายการ | ยอดชำระสุทธิ: ${b.total_amount}</div>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-primary rounded-pill px-3 fw-bold" onclick='pullHeldBill(${b.id})'>ดึงบิล</button>
@@ -779,41 +810,73 @@
                 if(!confirm("ตะกร้าปัจจุบันมีสินค้าอยู่ การดึงบิลจะเขียนทับตะกร้าเดิม ยืนยันหรือไม่?")) return;
             }
             
+            // ดึงข้อมูลสต๊อกล่าสุดสำหรับรายการในบิลพัก
+            let freshStockMap = {};
+            try {
+                const ids = bill.items.map(i => i.product_id).join(',');
+                // fetch ทีละรายการ (สต๊อกอาจเปลี่ยนหลังพักบิล)
+                await Promise.all(bill.items.map(async (item) => {
+                    const r = await fetch(`/api/products/search?q=${item.product_id}`);
+                    const prods = await r.json();
+                    const p = prods.find(x => x.id === item.product_id);
+                    if (p) freshStockMap[item.product_id] = p;
+                }));
+            } catch(e) {}
+
             const res = await fetch(`/api/sales/held/${bill.id}`, { method: 'DELETE' });
             if(res.ok) {
-                cart = bill.items.map(i => ({
-                    id: i.product_id,
-                    name: i.name,
-                    price: i.price,
-                    qty: i.qty,
-                    barcode: i.barcode || '',
-                    type: i.type || '',
-                    cart_id: Date.now() + Math.random()
-                }));
+                cart = bill.items.map(i => {
+                    const fresh = freshStockMap[i.product_id] || {};
+                    return {
+                        id: i.product_id,
+                        name: i.name,
+                        price: i.price,
+                        qty: i.qty,
+                        barcode: i.barcode || '',
+                        type: i.type || '',
+                        stock_qty: fresh.stock_qty !== undefined ? fresh.stock_qty : 999,
+                        is_active: fresh.is_active !== undefined ? fresh.is_active : 1,
+                        cart_id: Date.now() + Math.random()
+                    };
+                });
                 
-                document.getElementById('discountInput').value = bill.discount;
+                document.getElementById('discountInput').value = bill.discount || 0;
+
+                // คืนค่าลูกค้า
                 if(bill.customer_id) {
                     if (typeof tomSelectInstance !== 'undefined' && tomSelectInstance) tomSelectInstance.setValue(bill.customer_id);
                     else {
                         document.getElementById('customerSelect').value = bill.customer_id;
-                        handleCustomerSelect();
                     }
                 } else {
                     if (typeof tomSelectInstance !== 'undefined' && tomSelectInstance) tomSelectInstance.setValue('');
                     else {
                         document.getElementById('customerSelect').value = '';
-                        handleCustomerSelect();
                     }
                 }
+                handleCustomerSelect();
                 
-                totalRedeemedPoints = bill.redeemed_points || 0;
+                // Reset payment method/status ให้สะอาด
+                document.getElementById('paymentStatus').value = 'Paid';
+                togglePaymentStatus();
+                document.getElementById('paymentMethod').value = 'Cash';
+                toggleSplitPayment();
+                document.getElementById('splitCash').value = 0;
+                document.getElementById('splitTransfer').value = 0;
+                
+                totalRedeemedPoints = 0;
                 
                 renderCart();
+
+                // ปิด modal
                 const closeBtn = document.querySelector('#heldBillsModal .btn-close');
                 if (closeBtn) closeBtn.click();
+
+                document.getElementById('barcodeInput').focus();
             } else {
-                const err = await res.text();
-                alert("เกิดข้อผิดพลาดในการดึงบิล: " + err);
+                let errMsg = 'เกิดข้อผิดพลาดในการดึงบิล';
+                try { const d = await res.json(); errMsg += ': ' + (d.message || d.error || ''); } catch(e) {}
+                alert('❌ ' + errMsg);
             }
         }
 
@@ -918,7 +981,7 @@
 
         // Currency Formatter
         function formatMoney(num) {
-            return Number(num).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
     </script>
 
