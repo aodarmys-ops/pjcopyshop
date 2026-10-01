@@ -21,54 +21,39 @@ def get_sheets_service():
     )
     return build('sheets', 'v4', credentials=creds)
 
-def ensure_sheet_tabs(service, spreadsheet_id, required_tabs):
+def ensure_and_format_tabs_if_needed(service, spreadsheet_id, required_tabs):
     spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    existing_sheets = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+    existing_sheets = {s['properties']['title']: s['properties']['sheetId'] for s in spreadsheet.get('sheets', [])}
     
-    requests = []
-    for tab in required_tabs:
-        if tab not in existing_sheets:
-            requests.append({
-                'addSheet': {
-                    'properties': {
-                        'title': tab
-                    }
-                }
-            })
-            
-    if requests:
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={'requests': requests}
-        ).execute()
+    missing_tabs = [t for t in required_tabs if t not in existing_sheets]
+    if not missing_tabs:
+        return # Skip entirely to save time!
 
-def format_sheets(service, spreadsheet_id):
-    spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    sheet_map = {s['properties']['title']: s['properties']['sheetId'] for s in spreadsheet.get('sheets', [])}
+    # Create missing tabs
+    requests = [{'addSheet': {'properties': {'title': tab}}} for tab in missing_tabs]
+    response = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
     
-    requests = []
-    
-    # เพิ่มชีตใหม่เข้าไปในการจัดฟอร์แมตหัวตารางด้วย
+    # Extract new sheet IDs
+    for reply in response.get('replies', []):
+        new_sheet = reply.get('addSheet', {}).get('properties', {})
+        if 'title' in new_sheet and 'sheetId' in new_sheet:
+            existing_sheets[new_sheet['title']] = new_sheet['sheetId']
+
+    # Apply formatting only to raw tabs
+    format_requests = []
     raw_tabs = ['Raw_Sales', 'Raw_Stock', 'Raw_Jobs', 'Raw_Debtors', 'Raw_Expenses', 'Raw_Adjustments', 'Raw_Purchases']
-    for tab in raw_tabs:
-        if tab in sheet_map:
-            sid = sheet_map[tab]
-            requests.append({
+    for tab in missing_tabs:
+        if tab in raw_tabs and tab in existing_sheets:
+            sid = existing_sheets[tab]
+            format_requests.append({
                 'updateSheetProperties': {
-                    'properties': {
-                        'sheetId': sid,
-                        'gridProperties': {'frozenRowCount': 1}
-                    },
+                    'properties': {'sheetId': sid, 'gridProperties': {'frozenRowCount': 1}},
                     'fields': 'gridProperties.frozenRowCount'
                 }
             })
-            requests.append({
+            format_requests.append({
                 'repeatCell': {
-                    'range': {
-                        'sheetId': sid,
-                        'startRowIndex': 0,
-                        'endRowIndex': 1
-                    },
+                    'range': {'sheetId': sid, 'startRowIndex': 0, 'endRowIndex': 1},
                     'cell': {
                         'userEnteredFormat': {
                             'backgroundColor': {'red': 0.15, 'green': 0.23, 'blue': 0.36},
@@ -80,12 +65,9 @@ def format_sheets(service, spreadsheet_id):
                 }
             })
             
-    if requests:
+    if format_requests:
         try:
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={'requests': requests}
-            ).execute()
+            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': format_requests}).execute()
         except Exception as e:
             print("Formatting notice:", e, flush=True)
 
@@ -93,10 +75,8 @@ def sync_data(spreadsheet_id=SPREADSHEET_ID):
     print("Connecting to Google Sheets API...", flush=True)
     service = get_sheets_service()
     
-    # เพิ่มแท็บใหม่ที่ต้องการลงไปในรายการตรวจสอบ
     tabs = ['Dashboard', 'Raw_Sales', 'Raw_Stock', 'Raw_Jobs', 'Raw_Debtors', 'Raw_Expenses', 'Raw_Adjustments', 'Raw_Purchases']
-    print("Checking sheet tabs...", flush=True)
-    ensure_sheet_tabs(service, spreadsheet_id, tabs)
+    ensure_and_format_tabs_if_needed(service, spreadsheet_id, tabs)
     
     print("Reading data from SQLite...", flush=True)
     conn = sqlite3.connect(DB_FILE)
@@ -205,9 +185,7 @@ def sync_data(spreadsheet_id=SPREADSHEET_ID):
         }
     ).execute()
 
-    print("Applying styling and formatting...", flush=True)
-    format_sheets(service, spreadsheet_id)
-
+    # Removed duplicate format_sheets call to speed up sync
     return {
         'status': 'success',
         'updated_at': now_str
