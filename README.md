@@ -24,7 +24,4 @@
 2. `gas_dashboard/Index.html` -> สร้างไฟล์ `Index.html` และวางโค้ดใน Apps Script
 *(อย่าลืมตั้งค่า `XFrameOptionsMode.ALLOWALL` เพื่อให้ฝังใน Google Site ได้)*
 
-## คู่มือสำหรับการทดสอบและออดิตระบบ (AI Audit Tools)
-โปรเจกต์นี้มีไฟล์คู่มือสำหรับการใช้ AI (หรือผู้พัฒนารายอื่น) เพื่อเข้ามารีวิวหรือทดสอบระบบ:
-- `AI_UAT_TESTING_GUIDE.md`: คู่มือจำลองสถานการณ์การใช้งานจริง (End-to-End Test)
-- `AI_CODE_AUDIT_GUIDE.md`: แนวทางการตรวจสอบโครงสร้างโค้ดและช่องโหว่ความปลอดภัย
+

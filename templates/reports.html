@@ -371,6 +371,7 @@
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             
+            let url = '/api/reports';
             let dtUrl = '/api/sales/dt';
             if (startDate && endDate) {
                 url += `?start_date=${startDate}&end_date=${endDate}`;

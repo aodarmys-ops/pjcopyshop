@@ -1163,11 +1163,19 @@ def checkout_sale():
             if bom_items:
                 for b in bom_items:
                     raw_qty = b['qty_required'] * qty
-                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (raw_qty, b['raw_material_id']))
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?', (raw_qty, b['raw_material_id'], raw_qty))
+                    if c.rowcount == 0:
+                        conn.rollback()
+                        conn.close()
+                        return jsonify({"message": f"วัตถุดิบไอดี {b['raw_material_id']} มีไม่พอในสต๊อกขณะชำระเงิน"}), 400
             else:
                 # Normal stock deduction if no BOM and it is Retail
                 if item_type != 'Service':
-                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ?', (qty, product_id))
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?', (qty, product_id, qty))
+                    if c.rowcount == 0:
+                        conn.rollback()
+                        conn.close()
+                        return jsonify({"message": f"สินค้าสต๊อกไม่เพียงพอขณะชำระเงิน กรุณาตรวจสอบใหม่"}), 400
 
     if payment_status != 'Hold':
         # 3. Add/subtract points to customer if applicable
