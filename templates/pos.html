@@ -166,17 +166,32 @@
             <div class="glass-panel d-flex flex-column h-100">
                 <h4 class="fw-bold mb-3">สรุปยอดชำระ</h4>
                 
-                <div class="total-box mb-4 shadow">
+                <div class="total-box mb-3 shadow">
                     <div class="d-flex justify-content-between align-items-end mb-1">
                         <h5 class="m-0 text-white-50">ยอดรวมสุทธิ (Net Total)</h5>
                         <small class="text-warning fw-bold" id="pointsEarnedBox">⭐ ได้รับ 0 แต้ม</small>
                     </div>
                     <h1 class="m-0 fw-bold text-warning" id="totalAmount">0.00</h1>
+                    
+                    <div class="mt-2 pt-2 border-top border-secondary border-opacity-25 small" style="font-size: 0.85rem;">
+                        <div class="d-flex justify-content-between text-white-50">
+                            <span>ยอดรวมสินค้า:</span>
+                            <span id="subtotalDisplay" class="text-white fw-bold">0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between text-warning d-none" id="loyaltyDiscountRow">
+                            <span>ส่วนลดแต้มสะสม:</span>
+                            <span id="loyaltyDiscountDisplay" class="fw-bold">-0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between text-info d-none" id="promoDiscountRow">
+                            <span>ส่วนลดโปรโมชั่น:</span>
+                            <span id="promoDiscountDisplay" class="fw-bold">-0.00</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="mt-3">
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="mt-2">
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
                             <label class="form-label text-muted small fw-bold m-0">เลือกลูกค้า (สะสมแต้ม)</label>
                             <button type="button" class="btn btn-sm btn-success rounded px-2 fw-bold shadow-sm" onclick="new bootstrap.Modal(document.getElementById('addCustomerModal')).show()">+ เพิ่มลูกค้า</button>
                         </div>
@@ -185,16 +200,35 @@
                             <!-- Customers populated via JS -->
                         </select>
                         <div id="pointsInfoContainer" class="d-none">
-                            <button id="redeemPointsBtn" class="btn btn-sm btn-outline-warning text-dark fw-bold w-100" onclick="toggleRedeemPoints()">
-                                🎁 ใช้ 10 แต้ม ลดเครื่องดื่มชง 20 บาท
-                            </button>
-                            <small id="pointsStatusText" class="text-muted fw-bold mt-1 d-block"></small>
+                            <div class="d-flex gap-1 mb-1">
+                                <button id="redeemPointsBtn" class="btn btn-sm btn-outline-warning text-dark fw-bold flex-grow-1" onclick="toggleRedeemPoints()">
+                                    🎁 ใช้แต้มลดเครื่องดื่ม
+                                </button>
+                                <button id="cancelRedeemBtn" class="btn btn-sm btn-outline-danger fw-bold d-none" onclick="cancelRedemption()" title="ยกเลิกการใช้แต้ม">
+                                    ✕ ยกเลิก
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small id="pointsStatusText" class="text-muted fw-bold"></small>
+                                <small id="pointsRedeemedText" class="text-success fw-bold"></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Promotions Selection Panel -->
+                    <div class="mb-2 p-2 rounded-3 border bg-light shadow-sm" id="promoSection">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-bold text-dark small">🏷️ โปรโมชั่นที่เข้าเงื่อนไข</span>
+                            <span class="badge bg-secondary" id="promoBadge">0 โปร</span>
+                        </div>
+                        <div id="promoList" class="small" style="max-height: 110px; overflow-y: auto;">
+                            <span class="text-muted fst-italic">ไม่มีโปรโมชั่นที่เข้าเงื่อนไข</span>
                         </div>
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <span class="fw-bold text-muted">ส่วนลดท้ายบิล (Discount) </span>
-                        <input type="number" step="0.01" min="0" class="form-control text-end w-50 fw-bold" id="discountInput" value="0" onchange="renderCart()">
+                        <span class="fw-bold text-muted small">ส่วนลดท้ายบิล (Manual)</span>
+                        <input type="number" step="0.01" min="0" class="form-control text-end w-50 fw-bold" id="discountInput" value="0" oninput="renderCart()">
                     </div>
 
                     <div class="row g-2 mb-3">
@@ -267,6 +301,37 @@
         let tomSelectInstance = null;
         let selectedCustomerPoints = 0;
 
+        // Dynamic Loyalty Config (Loaded from /api/loyalty/config)
+        let loyaltyConfig = {
+            enabled: true,
+            drink_types: ['Brewed Drink'],
+            points_per_cup: 1,
+            points_per_unit: 10,
+            discount_per_unit: 20,
+            promo_auto_apply: true
+        };
+
+        // Promotion state
+        let eligiblePromotions = [];
+        let appliedPromotions = [];
+        let userSelectedPromoIds = new Set();
+        let currentPromoDiscount = 0.0;
+        let currentLoyaltyDiscount = 0.0;
+        let promoEvalTimer = null;
+
+        async function loadLoyaltyConfig() {
+            try {
+                const res = await fetch('/api/loyalty/config');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data) loyaltyConfig = data;
+                }
+            } catch (e) {
+                console.error("Error loading loyalty config:", e);
+            }
+            updateRedeemBtnUI();
+        }
+
         document.getElementById('barcodeInput').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 searchProduct();
@@ -297,8 +362,6 @@
         }
 
         function handleCustomerSelect() {
-            // Revert any redemptions in cart
-            cart.filter(i => i.is_redeemed).forEach(i => removeFromCart(i.cart_id));
             totalRedeemedPoints = 0;
             
             const customerId = document.getElementById('customerSelect').value;
@@ -309,6 +372,9 @@
             if (!customerId) {
                 container.classList.add('d-none');
                 selectedCustomerPoints = 0;
+                updateRedeemBtnUI();
+                renderCart();
+                triggerEvaluatePromotions();
                 return;
             }
 
@@ -323,34 +389,75 @@
                 redeemBtn.classList.remove('d-none');
             }
             updateRedeemBtnUI();
+            renderCart();
+            triggerEvaluatePromotions();
+        }
+
+        // ตัวช่วยคำนวณแลกแต้ม (สะท้อนตรรกะฝั่งเซิร์ฟเวอร์ compute_loyalty_discount)
+        function redeemQualifies(item) {
+            const rule = loyaltyConfig.redeem_rule;
+            if (rule && rule.target_scope === 'category' && rule.target_value) {
+                return item.type === rule.target_value;
+            }
+            if (rule && rule.target_scope === 'product' && rule.target_value) {
+                const ids = rule.target_value.split(',').map(s => s.trim()).filter(Boolean);
+                return ids.includes(String(item.id));
+            }
+            return Array.isArray(loyaltyConfig.drink_types) && loyaltyConfig.drink_types.includes(item.type);
+        }
+
+        function calcLoyaltyDiscount(units) {
+            if (units <= 0) return 0;
+            const rule = loyaltyConfig.redeem_rule;
+            if (!rule) return units * (loyaltyConfig.discount_per_unit || 0);
+            const prices = [];
+            cart.forEach(item => {
+                if (redeemQualifies(item)) {
+                    for (let i = 0; i < (parseInt(item.qty) || 0); i++) prices.push(parseFloat(item.price) || 0);
+                }
+            });
+            prices.sort((a, b) => b - a);
+            return prices.slice(0, units).reduce((s, p) => s + Math.max(0, p - rule.special_price), 0);
+        }
+
+        function getQualifyingDrinksCount() {
+            return cart.reduce((sum, item) => redeemQualifies(item) ? sum + parseInt(item.qty || 0) : sum, 0);
         }
 
         function toggleRedeemPoints() {
+            if (!loyaltyConfig.enabled) {
+                alert("ระบบสะสมแต้มปิดใช้งานอยู่");
+                return;
+            }
+            const unitPts = loyaltyConfig.points_per_unit || 10;
             let remain = selectedCustomerPoints - totalRedeemedPoints;
-            if (remain < 10) {
-                alert("แต้มสะสมไม่พอสำหรับการแลก (ต้องใช้ 10 แต้มต่อ 1 แก้ว)");
+            if (remain < unitPts) {
+                alert(`แต้มสะสมไม่พอสำหรับการแลก (ต้องใช้ ${unitPts} แต้มต่อ 1 แก้ว)`);
                 return;
             }
             
-            let possibleCupsFromPoints = Math.floor(remain / 10);
+            let possibleCupsFromPoints = Math.floor(remain / unitPts);
+            let drinksInCart = getQualifyingDrinksCount();
+            let currentRedeemedCups = totalRedeemedPoints / unitPts;
+            let remainingDrinksCanRedeem = Math.max(0, drinksInCart - currentRedeemedCups);
             
-            let redeemableCupsInCart = cart.reduce((sum, item) => {
-                if (item.type === 'Brewed Drink' && !item.is_redeemed) {
-                    return sum + item.qty;
-                }
-                return sum;
-            }, 0);
+            let maxCanRedeem = Math.min(possibleCupsFromPoints, remainingDrinksCanRedeem);
             
-            let maxCanRedeem = Math.min(possibleCupsFromPoints, redeemableCupsInCart);
-            
-            if (maxCanRedeem === 0) {
-                alert("ไม่มีเครื่องดื่มชงปกติในตะกร้าให้แลกแต้มแล้ว");
+            if (maxCanRedeem <= 0) {
+                alert("ไม่มีเครื่องดื่มที่ร่วมรายการเหลือในตะกร้าให้แลกแต้มแล้ว");
                 return;
             }
             
+            const curCups = totalRedeemedPoints / unitPts;
+            const oneCupDiscount = calcLoyaltyDiscount(curCups + 1) - calcLoyaltyDiscount(curCups);
+            const allDiscount = calcLoyaltyDiscount(curCups + maxCanRedeem) - calcLoyaltyDiscount(curCups);
+            document.getElementById('redeemAllText').innerText = maxCanRedeem;
+            document.getElementById('redeemAllPointsText').innerText = maxCanRedeem * unitPts;
+            document.getElementById('redeemDiscountPerUnitText').innerText = formatMoney(oneCupDiscount);
+            document.getElementById('redeemAllBtnText').innerText = `${maxCanRedeem} แก้ว (-${formatMoney(allDiscount)} บ.)`;
+            document.getElementById('redeemOneBtnText').innerText = `1 แก้ว (-${formatMoney(oneCupDiscount)} บ.)`;
+
             if (maxCanRedeem > 1) {
-                document.getElementById('redeemAllText').innerText = maxCanRedeem;
-                document.getElementById('redeemAllPointsText').innerText = maxCanRedeem * 10;
                 let modalEl = document.getElementById('redeemChoiceModal');
                 let modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
                 modal.show();
@@ -360,42 +467,38 @@
         }
         
         function executeRedeemAll() {
+            const unitPts = loyaltyConfig.points_per_unit || 10;
             let remain = selectedCustomerPoints - totalRedeemedPoints;
-            let possibleCupsFromPoints = Math.floor(remain / 10);
+            let possibleCupsFromPoints = Math.floor(remain / unitPts);
+            let drinksInCart = getQualifyingDrinksCount();
+            let currentRedeemedCups = totalRedeemedPoints / unitPts;
+            let remainingDrinksCanRedeem = Math.max(0, drinksInCart - currentRedeemedCups);
             
-            let redeemableCupsInCart = cart.reduce((sum, item) => {
-                if (item.type === 'Brewed Drink' && !item.is_redeemed) {
-                    return sum + item.qty;
-                }
-                return sum;
-            }, 0);
-            
-            let maxCanRedeem = Math.min(possibleCupsFromPoints, redeemableCupsInCart);
+            let maxCanRedeem = Math.min(possibleCupsFromPoints, remainingDrinksCanRedeem);
             executeRedeem(maxCanRedeem);
         }
 
         function executeRedeem(cupsToRedeem) {
-            let remainingToRedeem = cupsToRedeem;
-            while (remainingToRedeem > 0) {
-                let target = cart.find(i => i.type === 'Brewed Drink' && !i.is_redeemed);
-                if (!target) break;
-                
-                if (target.qty > 1) {
-                    target.qty -= 1;
-                    cart.push({ ...target, qty: 1, price: Math.max(0, target.price - 15), name: target.name + ' (แลกแต้ม)', is_redeemed: true, original_price: target.price, cart_id: Date.now() + Math.random() });
-                } else {
-                    target.original_price = target.price;
-                    target.price = Math.max(0, target.price - 15);
-                    target.name = target.name + ' (แลกแต้ม)';
-                    target.is_redeemed = true;
-                }
-                totalRedeemedPoints += 10;
-                remainingToRedeem--;
-            }
+            const unitPts = loyaltyConfig.points_per_unit || 10;
+            totalRedeemedPoints += (cupsToRedeem * unitPts);
             
             updateRedeemBtnUI();
             renderCart();
+            triggerEvaluatePromotions();
             
+            const modalEl = document.getElementById('redeemChoiceModal');
+            if (modalEl) {
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+            }
+        }
+
+        function cancelRedemption() {
+            totalRedeemedPoints = 0;
+            updateRedeemBtnUI();
+            renderCart();
+            triggerEvaluatePromotions();
+
             const modalEl = document.getElementById('redeemChoiceModal');
             if (modalEl) {
                 const modal = bootstrap.Modal.getInstance(modalEl);
@@ -405,18 +508,53 @@
 
         function updateRedeemBtnUI() {
             const redeemBtn = document.getElementById('redeemPointsBtn');
+            const cancelBtn = document.getElementById('cancelRedeemBtn');
             const statusText = document.getElementById('pointsStatusText');
-            let remain = selectedCustomerPoints - totalRedeemedPoints;
+            const redeemedText = document.getElementById('pointsRedeemedText');
+            if (!redeemBtn || !statusText) return;
+
+            if (!loyaltyConfig.enabled) {
+                redeemBtn.disabled = true;
+                redeemBtn.classList.replace('btn-outline-warning', 'btn-secondary');
+                redeemBtn.innerHTML = `ระบบสะสมแต้มปิดชั่วคราว`;
+                if (cancelBtn) cancelBtn.classList.add('d-none');
+                return;
+            }
+
+            const unitPts = loyaltyConfig.points_per_unit || 10;
+            const unitDiscount = loyaltyConfig.discount_per_unit || 20;
+            const redeemRule = loyaltyConfig.redeem_rule;
+            let remain = Math.max(0, selectedCustomerPoints - totalRedeemedPoints);
             statusText.innerText = `(เหลือ ${remain} แต้ม)`;
             
-            if (remain >= 10) {
+            if (totalRedeemedPoints > 0) {
+                const cups = totalRedeemedPoints / unitPts;
+                const disc = calcLoyaltyDiscount(cups);
+                if (redeemedText) redeemedText.innerText = `แลก ${cups} แก้ว (-${formatMoney(disc)} บ.)`;
+                if (cancelBtn) cancelBtn.classList.remove('d-none');
+            } else {
+                if (redeemedText) redeemedText.innerText = '';
+                if (cancelBtn) cancelBtn.classList.add('d-none');
+            }
+
+            const drinksInCart = getQualifyingDrinksCount();
+            const currentRedeemedCups = totalRedeemedPoints / unitPts;
+            const hasMoreDrinks = (drinksInCart > currentRedeemedCups);
+
+            if (remain >= unitPts && hasMoreDrinks) {
                 redeemBtn.disabled = false;
                 redeemBtn.classList.replace('btn-secondary', 'btn-outline-warning');
-                redeemBtn.innerHTML = `🎁 แลกแต้ม (ใช้ 10 แต้ม ลด 15 บ./แก้ว)`;
+                redeemBtn.innerHTML = redeemRule
+                    ? `🎁 ใช้ ${unitPts} แต้ม แลกแก้วราคาพิเศษ ${formatMoney(redeemRule.special_price)} บ./แก้ว`
+                    : `🎁 ใช้ ${unitPts} แต้ม ลดเครื่องดื่ม ${unitDiscount} บ./แก้ว`;
             } else {
                 redeemBtn.disabled = true;
                 redeemBtn.classList.replace('btn-outline-warning', 'btn-secondary');
-                redeemBtn.innerHTML = `แต้มไม่พอแลกเพิ่ม`;
+                if (remain < unitPts) {
+                    redeemBtn.innerHTML = `แต้มไม่พอแลก (ต้องมี ${unitPts} แต้ม)`;
+                } else {
+                    redeemBtn.innerHTML = `ไม่มีเครื่องดื่มให้แลกเพิ่ม`;
+                }
             }
         }
 
@@ -486,7 +624,7 @@
                 alert("สินค้าหมดสต๊อก ไม่สามารถขายได้!");
                 return;
             }
-            const existing = cart.find(i => i.id === product.id && !i.is_redeemed);
+            const existing = cart.find(i => i.id === product.id);
             if (existing) {
                 if (product.type !== 'Service' && (existing.qty + 1) > product.stock_qty) {
                     alert(`จำนวนสินค้าเกินสต๊อกที่มี (มีอยู่ ${product.stock_qty})!`);
@@ -497,32 +635,31 @@
                 cart.push({ ...product, qty: 1, cart_id: Date.now() + Math.random() });
             }
             renderCart();
+            updateRedeemBtnUI();
+            triggerEvaluatePromotions();
             document.getElementById('searchResults').innerHTML = '';
             document.getElementById('barcodeInput').focus();
         }
 
         function removeFromCart(cart_id) {
-            const item = cart.find(i => i.cart_id === cart_id);
-            if (item && item.is_redeemed) {
-                totalRedeemedPoints -= 10;
-                updateRedeemBtnUI();
-                
-                // try to merge back the removed item to normal if they didn't mean to delete the product completely,
-                // but actually deleting the row is fine (they can scan it again).
-                // It's cleaner to just delete it.
-            }
             cart = cart.filter(i => i.cart_id !== cart_id);
+            // Cap redeemed points if drinks count decreased
+            const unitPts = loyaltyConfig.points_per_unit || 10;
+            const maxCups = getQualifyingDrinksCount();
+            if ((totalRedeemedPoints / unitPts) > maxCups) {
+                totalRedeemedPoints = maxCups * unitPts;
+            }
             renderCart();
+            updateRedeemBtnUI();
+            triggerEvaluatePromotions();
         }
 
         function renderCart() {
             const tbody = document.getElementById('cartTable');
             tbody.innerHTML = '';
-            let subtotalSum = 0;
             
             cart.forEach(item => {
-                const subtotal = item.price * item.qty;
-                subtotalSum += subtotal;
+                const subtotal = (parseFloat(item.price) || 0) * (parseInt(item.qty) || 0);
                 tbody.innerHTML += `
                     <tr>
                         <td>
@@ -537,7 +674,7 @@
                         </td>
                         <td style="width: 80px;">
                             <div class="input-group input-group-sm">
-                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.cart_id}, this.value)" ${item.is_redeemed ? 'disabled' : ''}>
+                                <input type="number" class="form-control text-center fw-bold" value="${item.qty}" onchange="updateQty(${item.cart_id}, this.value)">
                             </div>
                         </td>
                         <td class="text-end fw-bold text-dark">${formatMoney(subtotal)}</td>
@@ -548,20 +685,143 @@
                 `;
             });
             
-            const discount = parseFloat(document.getElementById('discountInput').value) || 0;
-            const netTotal = Math.ceil(Math.max(0, subtotalSum - discount)); // ปัดเศษขึ้นเสมอ
-            
-            document.getElementById('totalAmount').innerText = `${formatMoney(netTotal)}`;
+            updateTotalsUI();
+        }
 
-            // Calculate points (do not give points for redeemed items)
-            let earnedPoints = 0;
+        function updateTotalsUI() {
+            let subtotalSum = 0;
             cart.forEach(item => {
-                if (item.type === 'Brewed Drink' && !item.is_redeemed) {
-                    earnedPoints += parseInt(item.qty);
+                subtotalSum += (parseFloat(item.price) || 0) * (parseInt(item.qty) || 0);
+            });
+            if (document.getElementById('subtotalDisplay')) {
+                document.getElementById('subtotalDisplay').innerText = formatMoney(subtotalSum);
+            }
+
+            const unitPts = loyaltyConfig.points_per_unit || 10;
+            currentLoyaltyDiscount = calcLoyaltyDiscount(Math.floor(totalRedeemedPoints / unitPts));
+
+            const loyaltyRow = document.getElementById('loyaltyDiscountRow');
+            if (loyaltyRow) {
+                if (currentLoyaltyDiscount > 0) {
+                    loyaltyRow.classList.remove('d-none');
+                    document.getElementById('loyaltyDiscountDisplay').innerText = `-${formatMoney(currentLoyaltyDiscount)}`;
+                } else {
+                    loyaltyRow.classList.add('d-none');
+                }
+            }
+
+            const promoRow = document.getElementById('promoDiscountRow');
+            if (promoRow) {
+                if (currentPromoDiscount > 0) {
+                    promoRow.classList.remove('d-none');
+                    document.getElementById('promoDiscountDisplay').innerText = `-${formatMoney(currentPromoDiscount)}`;
+                } else {
+                    promoRow.classList.add('d-none');
+                }
+            }
+
+            const manualDiscount = parseFloat(document.getElementById('discountInput').value) || 0;
+            const totalDiscount = manualDiscount + currentLoyaltyDiscount + currentPromoDiscount;
+            const netTotal = Math.ceil(Math.max(0, subtotalSum - totalDiscount));
+
+            document.getElementById('totalAmount').innerText = formatMoney(netTotal);
+
+            // Earned points calculation (dynamic drink types and points_per_cup)
+            let earnedCups = 0;
+            const drinkTypes = loyaltyConfig.drink_types || ['Brewed Drink'];
+            cart.forEach(item => {
+                if (drinkTypes.includes(item.type)) {
+                    earnedCups += parseInt(item.qty || 0);
                 }
             });
-            
+            // เซิร์ฟเวอร์: บิลที่แลกแต้มจะไม่ได้แต้มใหม่
+            const pointEligibleCups = totalRedeemedPoints > 0 ? 0 : earnedCups;
+            const earnedPoints = pointEligibleCups * (loyaltyConfig.points_per_cup || 1);
             document.getElementById('pointsEarnedBox').innerText = `⭐ ได้รับ ${earnedPoints} แต้ม`;
+        }
+
+        function triggerEvaluatePromotions() {
+            clearTimeout(promoEvalTimer);
+            promoEvalTimer = setTimeout(evaluatePromotions, 180);
+        }
+
+        async function evaluatePromotions() {
+            if (cart.length === 0) {
+                eligiblePromotions = [];
+                appliedPromotions = [];
+                currentPromoDiscount = 0.0;
+                renderPromotionsUI();
+                updateTotalsUI();
+                return;
+            }
+            const customerId = document.getElementById('customerSelect').value;
+            try {
+                const res = await fetch('/api/promotions/evaluate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: cart,
+                        customer_id: customerId || null,
+                        redeemed_points: totalRedeemedPoints,
+                        selected_promo_ids: Array.from(userSelectedPromoIds)
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    eligiblePromotions = data.eligible_promotions || [];
+                    appliedPromotions = data.applied_promotions || [];
+                    currentPromoDiscount = parseFloat(data.promo_discount) || 0.0;
+                    renderPromotionsUI();
+                    updateTotalsUI();
+                }
+            } catch (e) {
+                console.error("Evaluate promotions error:", e);
+            }
+        }
+
+        function renderPromotionsUI() {
+            const listEl = document.getElementById('promoList');
+            const badgeEl = document.getElementById('promoBadge');
+            if (!listEl) return;
+
+            if (eligiblePromotions.length === 0) {
+                badgeEl.innerText = '0 โปร';
+                badgeEl.className = 'badge bg-secondary';
+                listEl.innerHTML = '<span class="text-muted fst-italic">ไม่มีโปรโมชั่นที่เข้าเงื่อนไข</span>';
+                return;
+            }
+
+            badgeEl.innerText = `${appliedPromotions.length}/${eligiblePromotions.length} โปร`;
+            badgeEl.className = appliedPromotions.length > 0 ? 'badge bg-success' : 'badge bg-primary';
+
+            let html = '';
+            eligiblePromotions.forEach(p => {
+                const isApplied = appliedPromotions.some(ap => ap.id === p.id);
+                const checked = isApplied ? 'checked' : '';
+                html += `
+                    <div class="form-check d-flex justify-content-between align-items-center py-1 border-bottom border-light">
+                        <div>
+                            <input class="form-check-input me-2" type="checkbox" id="promo_chk_${p.id}" ${checked} onchange="togglePromoSelection(${p.id}, this.checked)">
+                            <label class="form-check-label fw-bold text-dark" for="promo_chk_${p.id}">
+                                ${escapeHTML(p.name)}
+                            </label>
+                        </div>
+                        <span class="badge ${isApplied ? 'bg-success' : 'bg-secondary'} ms-2">
+                            -${formatMoney(p.calculated_discount)} บ.
+                        </span>
+                    </div>
+                `;
+            });
+            listEl.innerHTML = html;
+        }
+
+        function togglePromoSelection(promoId, isChecked) {
+            if (isChecked) {
+                userSelectedPromoIds.add(promoId);
+            } else {
+                userSelectedPromoIds.delete(promoId);
+            }
+            evaluatePromotions();
         }
 
         function updateQty(cart_id, newQty) {
@@ -575,14 +835,21 @@
                 if (item.type !== 'Service' && qty > item.stock_qty) {
                     alert(`จำนวนสินค้าเกินสต๊อกที่มี (มีอยู่ ${item.stock_qty})!`);
                     item.qty = item.stock_qty;
-                    // Need to re-render to revert input value visually
                     setTimeout(renderCart, 10);
                     return;
                 } else {
                     item.qty = qty;
                 }
             }
+            // Cap redeemed points if drinks count decreased
+            const unitPts = loyaltyConfig.points_per_unit || 10;
+            const maxCups = getQualifyingDrinksCount();
+            if ((totalRedeemedPoints / unitPts) > maxCups) {
+                totalRedeemedPoints = maxCups * unitPts;
+            }
             renderCart();
+            updateRedeemBtnUI();
+            triggerEvaluatePromotions();
         }
 
         function updatePrice(cart_id, newPrice) {
@@ -591,6 +858,7 @@
             const item = cart.find(i => i.cart_id === cart_id);
             if (item) item.price = price;
             renderCart();
+            triggerEvaluatePromotions();
         }
 
         function toggleSplitPayment() {
@@ -699,6 +967,7 @@
                 notes: '-',
                 customer_id: customerId || null,
                 redeemed_points: isHold ? 0 : totalRedeemedPoints,
+                promo_ids: appliedPromotions.map(p => p.id),
                 items: cart
             };
 
@@ -727,7 +996,12 @@
                     
                     cart = [];
                     totalRedeemedPoints = 0;
+                    userSelectedPromoIds.clear();
+                    appliedPromotions = [];
+                    eligiblePromotions = [];
+                    currentPromoDiscount = 0.0;
                     renderCart();
+                    renderPromotionsUI();
                     document.getElementById('barcodeInput').value = '';
                     document.getElementById('discountInput').value = 0;
                     
@@ -767,6 +1041,7 @@
 
         // Init
         loadCustomers();
+        loadLoyaltyConfig();
     
         async function deleteHeldBill(id) {
             if(!confirm("ต้องการลบบิลที่พักไว้นี้ทิ้งถาวรหรือไม่?")) return;
@@ -867,6 +1142,8 @@
                 totalRedeemedPoints = 0;
                 
                 renderCart();
+                updateRedeemBtnUI();
+                triggerEvaluatePromotions();
 
                 // ปิด modal
                 const closeBtn = document.querySelector('#heldBillsModal .btn-close');
@@ -1022,9 +1299,10 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4 text-center">
-                    <p class="mb-3">คุณสามารถแลกได้สูงสุด <strong id="redeemAllText"></strong> แก้ว (ใช้ <strong id="redeemAllPointsText"></strong> แต้ม)</p>
-                    <button class="btn btn-warning w-100 mb-2 py-2 fw-bold rounded-pill" onclick="executeRedeemAll()">🌟 แลกทั้งหมด</button>
-                    <button class="btn btn-outline-secondary w-100 py-2 fw-bold rounded-pill" onclick="executeRedeem(1)">🥤 แลกแค่ 1 แก้ว</button>
+                    <p class="mb-3">คุณสามารถแลกได้สูงสุด <strong id="redeemAllText">0</strong> แก้ว<br><small class="text-muted">(ใช้ <strong id="redeemAllPointsText">0</strong> แต้ม ลดแก้วละ <strong id="redeemDiscountPerUnitText">0</strong> บาท)</small></p>
+                    <button class="btn btn-warning w-100 mb-2 py-2 fw-bold rounded-pill" onclick="executeRedeemAll()">🌟 แลกทั้งหมด (<span id="redeemAllBtnText">0 แก้ว</span>)</button>
+                    <button class="btn btn-outline-secondary w-100 mb-2 py-2 fw-bold rounded-pill" onclick="executeRedeem(1)">🥤 แลกแค่ 1 แก้ว (<span id="redeemOneBtnText">1 แก้ว</span>)</button>
+                    <button class="btn btn-link text-danger w-100 py-1 small fw-bold text-decoration-none" onclick="cancelRedemption()">❌ ยกเลิกการแลกแต้ม</button>
                 </div>
             </div>
         </div>

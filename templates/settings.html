@@ -104,6 +104,7 @@
     <button class="tab active" onclick="switchTab('shop')">🏪 ข้อมูลร้าน</button>
     <button class="tab" onclick="switchTab('payment')">💳 การชำระเงิน</button>
     <button class="tab" onclick="switchTab('receipt')">🧾 ใบเสร็จ</button>
+    <button class="tab" onclick="switchTab('loyalty')">🎁 สะสมแต้มและโปรโมชั่น</button>
     <button class="tab" onclick="switchTab('audit')">📋 Audit Log</button>
   </div>
 
@@ -172,6 +173,61 @@
     </div>
   </div>
 
+  <!-- Tab: Loyalty & Promotions -->
+  <div id="tab-loyalty" class="tab-content">
+    <div class="card">
+      <div class="card-title"><span>🎁</span> ตั้งค่าระบบสะสมแต้มและโปรโมชั่น</div>
+      <div class="alert alert-info">💡 สามารถกำหนดประเภทสินค้าที่นับเป็นเครื่องดื่มชง อัตราแต้ม และส่วนลดแลกแต้มได้โดยไม่ต้องแก้โค้ด</div>
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" id="loyalty_enabled" style="width:20px; height:20px; cursor:pointer;">
+            <span style="font-size:15px; font-weight:600; color:var(--text);">เปิดใช้งานระบบสะสมแต้ม (Loyalty Program)</span>
+          </label>
+        </div>
+
+        <div class="form-group full">
+          <label>ประเภทสินค้าที่นับเป็น "เครื่องดื่มชง" (เลือกได้หลายประเภท)</label>
+          <div id="drink-types-container" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; background:var(--surface2); padding:12px; border-radius:8px; border:1px solid var(--border);">
+            <!-- Populated via JS -->
+            <span style="color:var(--muted); font-size:13px;">กำลังโหลดประเภทสินค้า...</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>แต้มที่ได้ต่อ 1 แก้ว (เดิม: 1 แต้ม)</label>
+          <input id="loyalty_points_per_cup" type="number" min="0" step="1" placeholder="1">
+          <small style="color:var(--muted);">เมื่อซื้อสินค้ากลุ่มเครื่องดื่มที่เลือก จะได้รับแต้มตามจำนวนนี้ต่อแก้ว</small>
+        </div>
+
+        <div class="form-group">
+          <label>แต้มที่ใช้ต่อ 1 หน่วยแลก (เดิม: 10 แต้ม)</label>
+          <input id="loyalty_points_per_unit" type="number" min="1" step="1" placeholder="10">
+          <small style="color:var(--muted);">จำนวนแต้มสะสมที่ต้องใช้ในการแลกสิทธิ์ 1 ครั้ง (ห้ามเป็น 0 หรือติดลบ)</small>
+        </div>
+
+        <div class="form-group">
+          <label>ส่วนลดบาทต่อ 1 หน่วยแลก (เดิม: 20 บาท)</label>
+          <input id="loyalty_discount_per_unit" type="number" min="0" step="0.5" placeholder="20.0">
+          <small style="color:var(--muted);">มูลค่าส่วนลด (บาท) ที่ลูกค้าจะได้รับต่อ 1 หน่วยแลก</small>
+        </div>
+
+        <div class="form-group full" style="margin-top:10px;">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" id="promo_auto_apply" style="width:20px; height:20px; cursor:pointer;">
+            <span style="font-size:15px; font-weight:600; color:var(--text);">คำนวณและเลือกโปรโมชั่นที่ดีที่สุดให้อัตโนมัติที่หน้า POS (Auto-apply)</span>
+          </label>
+          <small style="color:var(--muted); margin-left:30px;">หากเปิดตัวเลือกนี้ ระบบจะเลือกโปรโมชั่นที่เข้าเงื่อนไขให้อัตโนมัติในตะกร้า แต่พนักงานยังสามารถปรับเปลี่ยนได้</small>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveLoyaltySettings()">💾 บันทึกการตั้งค่าแต้ม & โปรโมชั่น</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Tab: Audit Log -->
   <div id="tab-audit" class="tab-content">
     <div class="card">
@@ -209,15 +265,70 @@
 
 <script>
 let settings = {};
+const typeThaiMap = {
+  "Brewed Drink": "เครื่องดื่มชง",
+  "Stationery": "เครื่องเขียน",
+  "Gift shop": "กิ๊ฟช๊อป",
+  "Dolls": "ตุ๊กตา",
+  "Toys": "ของเล่น",
+  "Perfume": "น้ำหอม",
+  "IT equipment": "อุปกรณ์ IT",
+  "Water": "น้ำเปล่า",
+  "Soft drinks": "น้ำอัดลม",
+  "Retail": "สินค้าปลีก",
+  "Service": "งานบริการ"
+};
+
+async function loadProductTypes(selectedTypes = ['Brewed Drink']) {
+  try {
+    const res = await fetch('/api/product-types');
+    const types = await res.json();
+    const container = document.getElementById('drink-types-container');
+    container.innerHTML = '';
+    types.forEach(t => {
+      const isChecked = selectedTypes.includes(t);
+      const label = typeThaiMap[t] ? `${t} (${typeThaiMap[t]})` : t;
+      const item = document.createElement('label');
+      item.style.cssText = 'display:inline-flex; align-items:center; gap:6px; cursor:pointer; background:var(--surface); padding:6px 12px; border-radius:6px; border:1px solid var(--border); font-size:13px;';
+      item.innerHTML = `<input type="checkbox" name="drink_type_cb" value="${t}" ${isChecked ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;"> <span>${label}</span>`;
+      container.appendChild(item);
+    });
+  } catch (err) {
+    console.error('Failed to load product types:', err);
+  }
+}
 
 async function loadSettings() {
   const r = await fetch('/api/settings');
   settings = await r.json();
 
-  ['shop_name','shop_address','shop_phone','promptpay_number','vat_rate','receipt_footer','currency_symbol'].forEach(k => {
+  ['shop_name','shop_address','shop_phone','promptpay_number','vat_rate','receipt_footer','currency_symbol',
+   'loyalty_points_per_cup','loyalty_points_per_unit','loyalty_discount_per_unit'].forEach(k => {
     const el = document.getElementById(k);
     if (el && settings[k] !== undefined) el.value = settings[k];
   });
+
+  // Loyalty checkboxes & multi-select
+  const loyaltyEnabled = document.getElementById('loyalty_enabled');
+  if (loyaltyEnabled) {
+    loyaltyEnabled.checked = settings['loyalty_enabled'] === undefined || settings['loyalty_enabled'] === '1' || settings['loyalty_enabled'] === 'true';
+  }
+
+  const promoAuto = document.getElementById('promo_auto_apply');
+  if (promoAuto) {
+    promoAuto.checked = settings['promo_auto_apply'] === undefined || settings['promo_auto_apply'] === '1' || settings['promo_auto_apply'] === 'true';
+  }
+
+  let selectedDrinkTypes = ['Brewed Drink'];
+  if (settings['loyalty_drink_types']) {
+    try {
+      selectedDrinkTypes = JSON.parse(settings['loyalty_drink_types']);
+      if (!Array.isArray(selectedDrinkTypes)) selectedDrinkTypes = [settings['loyalty_drink_types']];
+    } catch(e) {
+      selectedDrinkTypes = settings['loyalty_drink_types'].split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+  await loadProductTypes(selectedDrinkTypes);
 }
 
 function getFields(keys) {
@@ -230,6 +341,7 @@ async function saveSetting(data) {
   const r = await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
   const j = await r.json();
   showToast(j.message || j.error, r.ok ? 'success' : 'error');
+  if (r.ok) loadSettings();
 }
 
 function saveShopSettings() {
@@ -240,6 +352,42 @@ function savePaymentSettings() {
 }
 function saveReceiptSettings() {
   saveSetting(getFields(['receipt_footer']));
+}
+
+function saveLoyaltySettings() {
+  const pointsPerCup = parseInt(document.getElementById('loyalty_points_per_cup').value);
+  const pointsPerUnit = parseInt(document.getElementById('loyalty_points_per_unit').value);
+  const discountPerUnit = parseFloat(document.getElementById('loyalty_discount_per_unit').value);
+
+  if (isNaN(pointsPerCup) || pointsPerCup < 0) {
+    showToast('แต้มที่ได้ต่อแก้ว ต้องเป็นจำนวนเต็มที่ไม่ติดลบ', 'error');
+    return;
+  }
+  if (isNaN(pointsPerUnit) || pointsPerUnit <= 0) {
+    showToast('แต้มที่ใช้ต่อ 1 หน่วยแลก ต้องมากกว่า 0 (ห้ามเป็น 0 หรือติดลบ)', 'error');
+    return;
+  }
+  if (isNaN(discountPerUnit) || discountPerUnit < 0) {
+    showToast('ส่วนลดต่อหน่วยแลก ต้องไม่ติดลบ', 'error');
+    return;
+  }
+
+  const selectedDrinkTypes = Array.from(document.querySelectorAll('input[name="drink_type_cb"]:checked')).map(cb => cb.value);
+  if (selectedDrinkTypes.length === 0) {
+    showToast('กรุณาเลือกประเภทสินค้าอย่างน้อย 1 ประเภทสำหรับกลุ่มเครื่องดื่ม', 'error');
+    return;
+  }
+
+  const payload = {
+    'loyalty_enabled': document.getElementById('loyalty_enabled').checked ? '1' : '0',
+    'loyalty_drink_types': JSON.stringify(selectedDrinkTypes),
+    'loyalty_points_per_cup': String(pointsPerCup),
+    'loyalty_points_per_unit': String(pointsPerUnit),
+    'loyalty_discount_per_unit': String(discountPerUnit),
+    'promo_auto_apply': document.getElementById('promo_auto_apply').checked ? '1' : '0'
+  };
+
+  saveSetting(payload);
 }
 
 function switchTab(name) {

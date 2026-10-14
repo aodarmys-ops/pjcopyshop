@@ -157,8 +157,24 @@
         </table>
 
         {% if sale.discount > 0 %}
-        <div class="text-right" style="font-size: 14px; margin-top: 5px;">
-            ส่วนลด (Discount): -{{ "{:,.2f}".format(sale.discount) }}
+        <div style="font-size: 13px; margin-top: 5px; color: #444; border-top: 1px dashed #eee; padding-top: 5px;">
+            {% if sale.loyalty_discount and sale.loyalty_discount > 0 %}
+            <div class="text-right">ส่วนลดแต้มสะสม{% if sale.redeemed_points %} ({{ sale.redeemed_points }} แต้ม){% endif %}: -{{ "{:,.2f}".format(sale.loyalty_discount) }}</div>
+            {% endif %}
+            {% if sale.promo_discount and sale.promo_discount > 0 %}
+            <div class="text-right">ส่วนลดโปรโมชั่น: -{{ "{:,.2f}".format(sale.promo_discount) }}</div>
+            {% if promotions %}
+                {% for p in promotions %}
+                <div class="text-right" style="font-size: 11px; color: #666;">• {{ p.promo_name }} (-{{ "{:,.2f}".format(p.discount_amount) }})</div>
+                {% endfor %}
+            {% endif %}
+            {% endif %}
+            {% if sale.manual_discount and sale.manual_discount > 0 %}
+            <div class="text-right">ส่วนลดพิเศษ/ท้ายบิล: -{{ "{:,.2f}".format(sale.manual_discount) }}</div>
+            {% endif %}
+            <div class="text-right fw-bold" style="font-size: 14px; margin-top: 3px;">
+                รวมส่วนลด: -{{ "{:,.2f}".format(sale.discount) }}
+            </div>
         </div>
         {% endif %}
         <div class="text-right fw-bold grand-total">

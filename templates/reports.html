@@ -259,6 +259,43 @@
             </div>
         </div>
 
+        <!-- Promotions & Discounts Summary Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm rounded-4 p-3 h-100 bg-white" style="border-left: 5px solid #6f42c1 !important;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-muted fw-bold d-block">🏷️ ส่วนลดโปรโมชั่นรวม</small>
+                            <h4 class="fw-bold m-0" style="color: #6f42c1;" id="valPromoDiscount">0.00</h4>
+                        </div>
+                        <span class="fs-2">🎁</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm rounded-4 p-3 h-100 bg-white" style="border-left: 5px solid #fd7e14 !important;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-muted fw-bold d-block">🥤 สิทธิแก้วฟรีสะสมแต้ม</small>
+                            <h4 class="fw-bold m-0 text-warning" id="valFreeDrinks">0 แก้ว</h4>
+                        </div>
+                        <span class="fs-2">⭐</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm rounded-4 p-3 h-100 bg-white" style="border-left: 5px solid #198754 !important;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-muted fw-bold d-block">💰 รวมส่วนลดทุกประเภทรวมกัน</small>
+                            <h4 class="fw-bold m-0 text-success" id="valTotalDiscount">0.00</h4>
+                        </div>
+                        <span class="fs-2">🏷️</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Tables -->
         <div class="row g-4">
             <!-- Itemized Sales Tables -->
@@ -421,6 +458,16 @@
             document.getElementById('valUnpaid').innerText = fmt(data.unpaid_total || 0);
             document.getElementById('valPaidUnpaid').innerText = fmt(data.paid_unpaid_total || 0);
             
+            // Promo & Loyalty Discounts
+            if (document.getElementById('valPromoDiscount')) {
+                document.getElementById('valPromoDiscount').innerText = fmt(data.promo_discount_total || 0);
+            }
+            if (document.getElementById('valTotalDiscount')) {
+                document.getElementById('valTotalDiscount').innerText = fmt(data.total_discount || 0);
+            }
+            if (document.getElementById('valFreeDrinks')) {
+                document.getElementById('valFreeDrinks').innerText = (data.total_free_drinks || 0) + " แก้ว";
+            }
             
             // Cash Flow Calculation
             const cashIn = parseFloat(data.cash_total) || 0;
@@ -471,8 +518,9 @@
             let totalItemAmount = 0;
             
             if (data.item_sales && data.item_sales.length > 0) {
-                const regularItems = data.item_sales.filter(i => i.type !== 'Brewed Drink');
-                const brewedItems = data.item_sales.filter(i => i.type === 'Brewed Drink');
+                const drinkTypes = Array.isArray(data.loyalty_drink_types) ? data.loyalty_drink_types : ['Brewed Drink'];
+                const regularItems = data.item_sales.filter(i => !drinkTypes.includes(i.type));
+                const brewedItems = data.item_sales.filter(i => drinkTypes.includes(i.type));
                 
                 // Regular Items
                 if (regularItems.length > 0) {

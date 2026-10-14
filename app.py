@@ -371,6 +371,59 @@ def init_db():
         except Exception:
             pass
 
+    # Promotions table migrations
+    for _col_def in [
+        ('description', "TEXT DEFAULT ''"),
+        ('target_scope', "TEXT DEFAULT 'all'"),
+        ('target_value', "TEXT DEFAULT ''"),
+        ('start_date', "TEXT DEFAULT ''"),
+        ('end_date', "TEXT DEFAULT ''"),
+        ('priority', "INTEGER DEFAULT 0"),
+        ('max_discount', "REAL DEFAULT 0"),
+        ('is_stackable', "INTEGER DEFAULT 1"),
+        ('allow_with_loyalty', "INTEGER DEFAULT 1"),
+        ('min_spend', "REAL DEFAULT 0")
+    ]:
+        try:
+            c.execute(f'ALTER TABLE Promotions ADD COLUMN {_col_def[0]} {_col_def[1]}')
+        except Exception:
+            pass
+
+    # Sales table migrations for itemized discounts
+    for _col_def in [
+        ('promo_discount', "REAL DEFAULT 0"),
+        ('loyalty_discount', "REAL DEFAULT 0"),
+        ('manual_discount', "REAL DEFAULT 0")
+    ]:
+        try:
+            c.execute(f'ALTER TABLE Sales ADD COLUMN {_col_def[0]} {_col_def[1]}')
+        except Exception:
+            pass
+
+    # Sale_Promotions table (ประวัติโปรโมชั่นที่ใช้จริงในบิล)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS Sale_Promotions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_id INTEGER NOT NULL,
+            promo_id INTEGER,
+            promo_name TEXT NOT NULL,
+            discount_amount REAL NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(sale_id) REFERENCES Sales(id)
+        )
+    ''')
+
+    # Default Loyalty & Promotion Settings
+    for _k, _v in [
+        ('loyalty_enabled', '1'),
+        ('loyalty_drink_types', '["Brewed Drink"]'),
+        ('loyalty_points_per_cup', '1'),
+        ('loyalty_points_per_unit', '10'),
+        ('loyalty_discount_per_unit', '20.0'),
+        ('promo_auto_apply', '1')
+    ]:
+        c.execute('INSERT OR IGNORE INTO Settings (key, value) VALUES (?, ?)', (_k, _v))
+
     # UNIQUE index เพื่อป้องกัน invoice_no ซ้ำกรณี concurrent access
     try:
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_invoice_no ON Sales(invoice_no) WHERE invoice_no IS NOT NULL')
@@ -428,6 +481,375 @@ def get_setting(key, default=''):
         return default
     finally:
         if not has_app_context():
+            conn.close()
+
+
+def _load_loyalty_settings():
+    """ดึงค่าตั้งค่าระบบสะสมแต้มและเครื่องดื่มชง พร้อมค่า fallback ที่ปลอดภัย"""
+    try:
+        enabled_val = get_setting('loyalty_enabled', '1')
+        enabled = str(enabled_val).strip() in ('1', 'true', 'True', 'yes')
+
+        drink_types_val = get_setting('loyalty_drink_types', '["Brewed Drink"]')
+        drink_types = []
+        try:
+            import json
+            parsed = json.loads(drink_types_val)
+            if isinstance(parsed, list):
+                drink_types = [str(x).strip() for x in parsed if str(x).strip()]
+            elif isinstance(parsed, str):
+                drink_types = [parsed.strip()]
+        except Exception:
+            drink_types = [t.strip() for t in str(drink_types_val).split(',') if t.strip()]
+
+        if not drink_types:
+            drink_types = ['Brewed Drink']
+
+        try:
+            points_per_cup = int(get_setting('loyalty_points_per_cup', '1'))
+            if points_per_cup < 0:
+                points_per_cup = 1
+        except Exception:
+            points_per_cup = 1
+
+        try:
+            points_per_unit = int(get_setting('loyalty_points_per_unit', '10'))
+            if points_per_unit <= 0:  # ป้องกันตัวหารเป็น 0
+                points_per_unit = 10
+        except Exception:
+            points_per_unit = 10
+
+        try:
+            discount_per_unit = float(get_setting('loyalty_discount_per_unit', '20.0'))
+            if discount_per_unit < 0:
+                discount_per_unit = 20.0
+        except Exception:
+            discount_per_unit = 20.0
+
+        promo_auto_val = get_setting('promo_auto_apply', '1')
+        promo_auto_apply = str(promo_auto_val).strip() in ('1', 'true', 'True', 'yes')
+
+        return {
+            'enabled': enabled,
+            'drink_types': drink_types,
+            'points_per_cup': points_per_cup,
+            'points_per_unit': points_per_unit,
+            'discount_per_unit': discount_per_unit,
+            'promo_auto_apply': promo_auto_apply
+        }
+    except Exception:
+        return {
+            'enabled': True,
+            'drink_types': ['Brewed Drink'],
+            'points_per_cup': 1,
+            'points_per_unit': 10,
+            'discount_per_unit': 20.0,
+            'promo_auto_apply': True
+        }
+
+
+def get_active_redeem_rule(conn=None):
+    """
+    หาโปรโมชั่นประเภท 'loyalty_redeem' (แลกแต้ม: ครบ X แต้ม/แก้ว แก้วถัดไปราคาพิเศษ Y บาท)
+    ที่เปิดใช้งานและอยู่ในช่วงวันที่ โดยเลือก priority สูงสุด
+    - condition_value = จำนวนแต้มที่ต้องใช้ต่อ 1 แก้ว
+    - discount_value  = ราคาพิเศษต่อแก้วที่แลก
+    """
+    close_at_end = False
+    if conn is None:
+        conn = get_db_connection()
+        close_at_end = not has_app_context()
+    try:
+        today_str = datetime.date.today().isoformat()
+        rows = conn.execute(
+            "SELECT * FROM Promotions WHERE is_active = 1 AND promo_type = 'loyalty_redeem' "
+            "ORDER BY priority DESC, id DESC"
+        ).fetchall()
+        for r in rows:
+            p = dict(r)
+            start_date = str(p.get('start_date') or '').strip()
+            end_date = str(p.get('end_date') or '').strip()
+            if start_date and today_str < start_date:
+                continue
+            if end_date and today_str > end_date:
+                continue
+            pts = int(p.get('condition_value') or 0)
+            if pts <= 0:
+                continue
+            return {
+                'promo_id': p['id'],
+                'name': p['name'],
+                'points_required': pts,
+                'special_price': max(0.0, float(p.get('discount_value') or 0)),
+                'target_scope': p.get('target_scope') or 'all',
+                'target_value': str(p.get('target_value') or '').strip()
+            }
+        return None
+    except Exception:
+        return None
+    finally:
+        if close_at_end:
+            conn.close()
+
+
+def get_loyalty_config(conn=None):
+    """ค่าตั้งค่า loyalty + กติกาแลกแต้มจากหน้าโปรโมชั่น (ถ้ามี จะ override แต้มที่ใช้ต่อแก้ว)"""
+    cfg = _load_loyalty_settings()
+    rule = get_active_redeem_rule(conn)
+    cfg['redeem_rule'] = rule
+    if rule:
+        cfg['points_per_unit'] = rule['points_required']
+    return cfg
+
+
+def compute_loyalty_discount(items, redeemed_points, loyalty_conf):
+    """
+    คำนวณส่วนลดจากการแลกแต้ม คืนค่า (discount, units, qualifying_cups)
+    - มีโปร loyalty_redeem: แก้วที่แลกคิดราคาพิเศษ (ส่วนลด = ราคาแก้ว - ราคาพิเศษ) เลือกแก้วราคาสูงสุดก่อน
+    - ไม่มี: ใช้ discount_per_unit จากหน้าตั้งค่าตามเดิม
+    """
+    ppu = loyalty_conf.get('points_per_unit') or 0
+    rule = loyalty_conf.get('redeem_rule')
+
+    if rule and rule['target_scope'] == 'category' and rule['target_value']:
+        qualifies = lambda it: it.get('type') == rule['target_value']
+    elif rule and rule['target_scope'] == 'product' and rule['target_value']:
+        _ids = {x.strip() for x in rule['target_value'].split(',') if x.strip()}
+        qualifies = lambda it: str(it.get('id')) in _ids
+    else:
+        _types = loyalty_conf.get('drink_types') or []
+        qualifies = lambda it: it.get('type') in _types
+
+    prices = []
+    for it in items:
+        if qualifies(it):
+            prices.extend([float(it.get('price', 0))] * int(it.get('qty', 0)))
+    prices.sort(reverse=True)
+    qualifying_cups = len(prices)
+
+    if not redeemed_points or not loyalty_conf.get('enabled') or ppu <= 0:
+        return 0.0, 0, qualifying_cups
+
+    units = redeemed_points // ppu
+    if rule:
+        discount = sum(max(0.0, p - rule['special_price']) for p in prices[:units])
+    else:
+        discount = units * loyalty_conf['discount_per_unit']
+    return round(float(discount), 2), units, qualifying_cups
+
+
+def evaluate_promotions_logic(items, customer_id=None, redeemed_points=0, selected_promo_ids=None, conn=None):
+    """
+    ฟังก์ชันคำนวณโปรโมชั่นส่วนกลาง ใช้ทั้งตอนพรีวิว (/api/promotions/evaluate)
+    และตอนบันทึกบิลจริง (/api/sales) เพื่อให้ผลตรงกัน 100%
+    """
+    close_at_end = False
+    if conn is None:
+        conn = get_db_connection()
+        close_at_end = True
+
+    try:
+        # เติม type ของสินค้าจากฐานข้อมูลฝั่งเซิร์ฟเวอร์ (ไม่เชื่อค่าจาก client)
+        # เพื่อให้โปรโมชั่นแบบ category ทำงานตรงกันทั้งตอนพรีวิวและตอนบันทึกบิล
+        enriched_items = []
+        for it in items:
+            it = dict(it)
+            row = conn.execute('SELECT type FROM Products_Services WHERE id = ?', (it.get('id'),)).fetchone()
+            if row:
+                it['type'] = row['type']
+            enriched_items.append(it)
+        items = enriched_items
+
+        today_str = datetime.date.today().isoformat()
+        promos = conn.execute(
+            'SELECT * FROM Promotions WHERE is_active = 1 ORDER BY priority DESC, id DESC'
+        ).fetchall()
+
+        # คำนวณยอดรวมและจำนวนรวมในตะกร้า
+        cart_subtotal = sum(float(it.get('price', 0)) * int(it.get('qty', 0)) for it in items)
+        cart_total_qty = sum(int(it.get('qty', 0)) for it in items)
+
+        # Loyalty config สำหรับคำนวณส่วนลดแต้ม (เพื่อตรวจเพดานส่วนลด)
+        loyalty_conf = get_loyalty_config(conn)
+        loyalty_discount, _units, _cups = compute_loyalty_discount(items, redeemed_points, loyalty_conf)
+
+        eligible_promos = []
+
+        for p_row in promos:
+            p = dict(p_row)
+            p_type = p.get('promo_type', '')
+            disc_val = float(p.get('discount_value', 0) or 0)
+            cond_type = p.get('condition_type') or 'none'
+            cond_val = float(p.get('condition_value', 0) or 0)
+            scope = p.get('target_scope') or 'all'
+            target_val = str(p.get('target_value') or '').strip()
+            start_date = str(p.get('start_date') or '').strip()
+            end_date = str(p.get('end_date') or '').strip()
+            max_disc = float(p.get('max_discount', 0) or 0)
+            allow_with_loyalty = int(p.get('allow_with_loyalty', 1))
+
+            # 1. ตรวจช่วงวันที่
+            if start_date and today_str < start_date:
+                continue
+            if end_date and today_str > end_date:
+                continue
+
+            # 2. ตรวจการใช้ร่วมกับแต้มสะสม
+            if redeemed_points > 0 and allow_with_loyalty == 0:
+                continue
+
+            # 3. คัดกรองสินค้าตาม scope
+            if scope == 'category' and target_val:
+                matching_items = [it for it in items if it.get('type') == target_val]
+            elif scope == 'product' and target_val:
+                target_ids = {x.strip() for x in target_val.split(',') if x.strip()}
+                matching_items = [it for it in items if str(it.get('id')) in target_ids]
+            else:
+                matching_items = items
+
+            matching_subtotal = sum(float(it.get('price', 0)) * int(it.get('qty', 0)) for it in matching_items)
+            matching_qty = sum(int(it.get('qty', 0)) for it in matching_items)
+
+            # 4. ตรวจเงื่อนไขขั้นต่ำ (condition_type)
+            if cond_type == 'min_spend':
+                eval_amount = matching_subtotal if scope in ('category', 'product') else cart_subtotal
+                if eval_amount < cond_val:
+                    continue
+            elif cond_type == 'min_qty':
+                eval_qty = matching_qty if scope in ('category', 'product') else cart_total_qty
+                if eval_qty < cond_val:
+                    continue
+
+            # 5. คำนวณมูลค่าส่วนลดตามประเภทโปรโมชั่น
+            raw_discount = 0.0
+
+            # 5.1 ซื้อครบ X บาท ลด Y บาท
+            if p_type in ('spend_threshold', 'spend_x_disc_y'):
+                spend_target = cond_val if cond_val > 0 else float(p.get('min_spend', 0) or 0)
+                eval_amount = matching_subtotal if scope in ('category', 'product') else cart_subtotal
+                if eval_amount >= spend_target and spend_target > 0:
+                    raw_discount = disc_val
+                elif spend_target == 0:
+                    raw_discount = disc_val
+
+            # 5.2 ลดเป็น % ทั้งบิล
+            elif p_type in ('percent_bill', 'bill_percent'):
+                raw_discount = cart_subtotal * (disc_val / 100.0)
+
+            # 5.3 ลดเป็นบาททั้งบิล
+            elif p_type in ('fixed_bill', 'bill_fixed', 'discount', 'bill_discount'):
+                raw_discount = disc_val
+
+            # 5.4 ลด % ตามประเภทสินค้า หรือ สินค้าเฉพาะ
+            elif p_type in ('percent_category', 'percent_product'):
+                raw_discount = matching_subtotal * (disc_val / 100.0)
+
+            # 5.5 ลดเป็นบาทตามประเภทสินค้า หรือ สินค้าเฉพาะ (ลดต่อชิ้น)
+            elif p_type in ('fixed_category', 'fixed_product'):
+                raw_discount = matching_qty * disc_val
+
+            # 5.6 ซื้อครบ N ชิ้น ลด/แถม (เช่น ซื้อ X ชิ้น ฟรี Y ชิ้น)
+            elif p_type in ('buy_x_get_y', 'freebie', 'bundle_qty'):
+                buy_n = int(cond_val) if cond_val > 0 else 1
+                free_m = int(disc_val) if disc_val > 0 else 1
+                if matching_qty >= buy_n and buy_n > 0:
+                    unit_prices = []
+                    for it in matching_items:
+                        p_price = float(it.get('price', 0))
+                        unit_prices.extend([p_price] * int(it.get('qty', 0)))
+                    unit_prices.sort()
+                    num_free_units = (matching_qty // buy_n) * free_m
+                    raw_discount = sum(unit_prices[:num_free_units])
+
+            max_possible = matching_subtotal if scope in ('category', 'product') else cart_subtotal
+            calculated_discount = min(raw_discount, max_possible)
+
+            if max_disc > 0:
+                calculated_discount = min(calculated_discount, max_disc)
+
+            calculated_discount = round(calculated_discount, 2)
+
+            if calculated_discount > 0:
+                p['calculated_discount'] = calculated_discount
+                eligible_promos.append(p)
+
+        # 6. เลือกโปรโมชั่นที่ถูกนำมาใช้จริง (Stacking & Priority)
+        applied_promos = []
+
+        if selected_promo_ids is not None:
+            # กรณีระบุโปรที่ต้องการใช้มาเจาะจง
+            selected_ids = [int(x) for x in selected_promo_ids if str(x).isdigit()]
+            candidate_promos = [p for p in eligible_promos if p['id'] in selected_ids]
+
+            has_non_stackable = any(p['is_stackable'] == 0 for p in candidate_promos)
+            if has_non_stackable:
+                if candidate_promos:
+                    best = max(candidate_promos, key=lambda x: (x['priority'], x['calculated_discount']))
+                    applied_promos = [best]
+            else:
+                applied_promos = candidate_promos
+        else:
+            # กรณีคำนวณอัตโนมัติ (Auto-apply)
+            if eligible_promos:
+                stackable_promos = [p for p in eligible_promos if p['is_stackable'] == 1]
+                stackable_sum = sum(p['calculated_discount'] for p in stackable_promos)
+
+                non_stackable_promos = [p for p in eligible_promos if p['is_stackable'] == 0]
+                best_non_stackable = max(non_stackable_promos, key=lambda x: (x['calculated_discount'], x['priority'])) if non_stackable_promos else None
+                best_non_stackable_amt = best_non_stackable['calculated_discount'] if best_non_stackable else 0
+
+                if best_non_stackable_amt > stackable_sum:
+                    applied_promos = [best_non_stackable]
+                else:
+                    applied_promos = stackable_promos
+
+        # ป้องกันไม่ให้ส่วนลดโปรโมชั่นทำให้ยอดสุทธิติดลบ
+        remaining_budget = max(0.0, cart_subtotal - loyalty_discount)
+        final_applied = []
+        total_promo_discount = 0.0
+
+        for ap in applied_promos:
+            if remaining_budget <= 0:
+                break
+            actual_disc = min(ap['calculated_discount'], remaining_budget)
+            if actual_disc > 0:
+                total_promo_discount += actual_disc
+                remaining_budget -= actual_disc
+                final_applied.append({
+                    'id': ap['id'],
+                    'name': ap['name'],
+                    'promo_type': ap['promo_type'],
+                    'discount': round(actual_disc, 2),
+                    'priority': ap['priority'],
+                    'is_stackable': ap['is_stackable']
+                })
+
+        total_promo_discount = round(total_promo_discount, 2)
+        total_amount = math.ceil(max(0.0, cart_subtotal - loyalty_discount - total_promo_discount))
+
+        return {
+            'eligible_promotions': [
+                {
+                    'id': ep['id'],
+                    'name': ep['name'],
+                    'description': ep.get('description', ''),
+                    'promo_type': ep['promo_type'],
+                    'discount': ep['calculated_discount'],
+                    'priority': ep['priority'],
+                    'is_stackable': ep['is_stackable'],
+                    'allow_with_loyalty': ep['allow_with_loyalty']
+                } for ep in eligible_promos
+            ],
+            'applied_promotions': final_applied,
+            'promo_discount': total_promo_discount,
+            'loyalty_discount': round(loyalty_discount, 2),
+            'subtotal': round(cart_subtotal, 2),
+            'total_amount': total_amount,
+            'net_total': total_amount,
+            'success': True
+        }
+    finally:
+        if close_at_end:
             conn.close()
 
 
@@ -1054,23 +1476,31 @@ def get_writeoff_history():
 
 @app.route('/api/sales', methods=['POST'])
 def checkout_sale():
-    data = request.get_json()
-    manual_discount = max(0, float(data.get('discount', 0)))
+    data = request.get_json() or {}
+    manual_discount = max(0.0, float(data.get('discount', 0) or 0))
     payment_method = data.get('payment_method', 'Cash')
     payment_status = data.get('payment_status', 'Paid')
-    split_cash = data.get('split_cash', 0.0)
-    split_transfer = data.get('split_transfer', 0.0)
+    split_cash = float(data.get('split_cash', 0.0) or 0)
+    split_transfer = float(data.get('split_transfer', 0.0) or 0)
     notes = data.get('notes', '')
     customer_id = data.get('customer_id')
-    redeemed_points = int(data.get('redeemed_points', 0))
+    redeemed_points = int(data.get('redeemed_points', 0) or 0)
     items = data.get('items', [])
+    promo_ids = data.get('promo_ids') or data.get('selected_promo_ids')
+
+    # ตรวจสอบความถูกต้องของรายการสินค้า
+    if not items:
+        return jsonify({"message": "ไม่มีสินค้าในตะกร้า"}), 400
+    try:
+        for item in items:
+            if int(item.get('qty', 0)) <= 0 or float(item.get('price', 0)) < 0:
+                return jsonify({"message": "จำนวนสินค้าต้องมากกว่า 0 และราคาต้องไม่ติดลบ"}), 400
+    except (TypeError, ValueError):
+        return jsonify({"message": "ข้อมูลสินค้าไม่ถูกต้อง"}), 400
 
     conn = get_db_connection()
     c = conn.cursor()
-    
-    # Calculate Total Amount and apply Round Up (ปัดเศษขึ้นเสมอ)
-    subtotal = sum(item['price'] * item['qty'] for item in items)
-    
+
     # 0. Check Stock & Product Existence (ข้ามสำหรับ Hold เพราะยังไม่ตัดสต๊อก)
     if payment_status != 'Hold':
         for item in items:
@@ -1082,68 +1512,101 @@ def checkout_sale():
                 conn.close()
                 return jsonify({"message": f"สินค้า {item.get('name', 'Product')} มีไม่พอในสต๊อก (มีอยู่ {p['stock_qty']})"}), 400
 
-    loyalty_discount = 0
+    subtotal = sum(float(item['price']) * int(item['qty']) for item in items)
 
-    if redeemed_points:
-        if redeemed_points % 10 != 0 or not customer_id:
+    # 1. คำนวณส่วนลดแต้มสะสมจาก Loyalty Config (ไม่เชื่อตัวเลขที่ client ส่งมา)
+    loyalty_config = get_loyalty_config(conn)
+    loyalty_discount = 0.0
+
+    if redeemed_points > 0:
+        if not loyalty_config['enabled']:
             conn.close()
-            return jsonify({"message": "Invalid loyalty redemption"}), 400
+            return jsonify({"message": "ระบบสะสมแต้มปิดใช้งานอยู่"}), 400
+
+        points_per_unit = loyalty_config['points_per_unit']
+        if redeemed_points % points_per_unit != 0 or not customer_id:
+            conn.close()
+            return jsonify({"message": f"จำนวนแต้มที่แลกไม่ถูกต้อง (ต้องเป็นทวีคูณของ {points_per_unit} แต้ม)"}), 400
 
         customer = c.execute('SELECT points FROM Customers WHERE id = ?', (customer_id,)).fetchone()
         if not customer or customer['points'] < redeemed_points:
             conn.close()
-            return jsonify({"message": "Not enough points"}), 400
-            
-        has_drink = any(it.get('type') == 'Brewed Drink' for it in items)
-        if not has_drink:
+            return jsonify({"message": "แต้มสะสมของลูกค้าไม่เพียงพอ"}), 400
+
+        # ส่วนลดแลกแต้ม: ดึงจากโปรโมชั่นแลกแต้ม (ราคาพิเศษต่อแก้ว) ถ้ามี ไม่เช่นนั้นใช้ค่าจากหน้าตั้งค่า
+        loyalty_discount, redeem_units, qualifying_cups = compute_loyalty_discount(items, redeemed_points, loyalty_config)
+        if qualifying_cups <= 0:
             conn.close()
-            return jsonify({"message": "Points can only be redeemed for brewed drinks"}), 400
+            return jsonify({"message": "แต้มสะสมสามารถใช้แลกได้เฉพาะสินค้ากลุ่มเครื่องดื่มที่กำหนดเท่านั้น"}), 400
+        if redeem_units > qualifying_cups:
+            conn.close()
+            return jsonify({"message": f"แลกได้สูงสุด {qualifying_cups} แก้วตามจำนวนเครื่องดื่มในตะกร้า"}), 400
 
-        loyalty_discount = (redeemed_points // 10) * 20
+    # 2. คำนวณส่วนลดโปรโมชั่นที่ฝั่งเซิร์ฟเวอร์ใหม่ทุกครั้ง (ห้ามเชื่อยอดจากหน้าเว็บ)
+    promo_eval = evaluate_promotions_logic(
+        items=items,
+        customer_id=customer_id,
+        redeemed_points=redeemed_points,
+        selected_promo_ids=promo_ids,
+        conn=conn
+    )
+    promo_discount = promo_eval['promo_discount']
+    applied_promotions = promo_eval['applied_promotions']
 
-    discount = manual_discount + loyalty_discount
-    total_amount = math.ceil(max(0, subtotal - discount))
-    
-    # Generate Invoice No — ใช้ helper function (connection แยกเพื่อ avoid race condition)
+    # 3. รวมส่วนลด (manual + loyalty + promo) และคำนวณยอดสุทธิ (ปัดเศษขึ้นเสมอ)
+    total_discount = manual_discount + loyalty_discount + promo_discount
+    total_amount = math.ceil(max(0.0, subtotal - total_discount))
+
+    # Generate Invoice No
     invoice_no = generate_invoice_no()
-    
-    # 1. Insert into Sales (retry 3 ครั้งหากเกิด UNIQUE conflict จาก concurrent requests)
+
+    # 4. Insert into Sales
     for _attempt in range(3):
         try:
             c.execute('''
-                INSERT INTO Sales (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (invoice_no, total_amount, discount, payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes))
-            break  # success
+                INSERT INTO Sales (
+                    invoice_no, total_amount, discount, promo_discount, loyalty_discount, manual_discount,
+                    payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                invoice_no, total_amount, total_discount, promo_discount, loyalty_discount, manual_discount,
+                payment_method, split_cash, split_transfer, payment_status, customer_id, redeemed_points, notes
+            ))
+            break
         except sqlite3.IntegrityError as e:
             if 'UNIQUE constraint failed: Sales.invoice_no' in str(e) and _attempt < 2:
-                invoice_no = generate_invoice_no()  # generate ใหม่แล้ว retry
+                invoice_no = generate_invoice_no()
             else:
                 conn.close()
                 return jsonify({"message": "ไม่สามารถสร้างเลขบิลได้ กรุณาลองใหม่"}), 500
     sale_id = c.lastrowid
-    
-    # Insert into Customer_Credit if Unpaid (or Hold, though scope says Unpaid means Credit)
+
+    # 5. Insert into Sale_Promotions (บันทึกโปรโมชั่นที่ใช้จริงลงบิล)
+    for ap in applied_promotions:
+        c.execute('''
+            INSERT INTO Sale_Promotions (sale_id, promo_id, promo_name, discount_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (sale_id, ap['id'], ap['name'], ap['discount']))
+
+    # 6. Customer Credit if Unpaid
     if payment_status == 'Unpaid' and customer_id:
         c.execute('''
             INSERT INTO Customer_Credit (customer_id, sale_id, amount_due, amount_paid, status)
             VALUES (?, ?, ?, 0, 'Unpaid')
         ''', (customer_id, sale_id, total_amount))
 
-    # 2. Insert into Sale_Items, update stock, and calculate points
+    # 7. Insert Sale_Items, update stock, and calculate earned points
     earned_points = 0
     for item in items:
         product_id = item['id']
-        qty = item['qty']
-        price = item['price']
+        qty = int(item['qty'])
+        price = float(item['price'])
         prod_info = c.execute('SELECT type, cost FROM Products_Services WHERE id = ?', (product_id,)).fetchone()
         item_type = prod_info['type'] if prod_info else ''
         base_cost = prod_info['cost'] if prod_info else 0.0
-        
-        # Check BOM for Raw Materials deduction
+
         bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?', (product_id,)).fetchall()
-        
-        # Calculate item cost dynamically from BOM or use base cost
+
         item_cost = 0.0
         if bom_items:
             for b in bom_items:
@@ -1152,42 +1615,51 @@ def checkout_sale():
                 item_cost += (raw_cost * b['qty_required'])
         else:
             item_cost = base_cost
-            
+
         c.execute('INSERT INTO Sale_Items (sale_id, product_id, qty, price, cost_price) VALUES (?, ?, ?, ?, ?)',
                   (sale_id, product_id, qty, price, item_cost))
-                  
+
         if payment_status != 'Hold':
-            if item_type == 'Brewed Drink' and not item.get('is_redeemed') and not redeemed_points:
-                earned_points += qty
-            
+            # คำนวณแต้มสะสมตามค่าตั้งค่า loyalty
+            if loyalty_config['enabled'] and item_type in loyalty_config['drink_types'] and not item.get('is_redeemed') and not redeemed_points:
+                earned_points += qty * loyalty_config['points_per_cup']
+
             if bom_items:
                 for b in bom_items:
                     raw_qty = b['qty_required'] * qty
-                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?', (raw_qty, b['raw_material_id'], raw_qty))
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?',
+                              (raw_qty, b['raw_material_id'], raw_qty))
                     if c.rowcount == 0:
                         conn.rollback()
                         conn.close()
                         return jsonify({"message": f"วัตถุดิบไอดี {b['raw_material_id']} มีไม่พอในสต๊อกขณะชำระเงิน"}), 400
             else:
-                # Normal stock deduction if no BOM and it is Retail
                 if item_type != 'Service':
-                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?', (qty, product_id, qty))
+                    c.execute('UPDATE Products_Services SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?',
+                              (qty, product_id, qty))
                     if c.rowcount == 0:
                         conn.rollback()
                         conn.close()
                         return jsonify({"message": f"สินค้าสต๊อกไม่เพียงพอขณะชำระเงิน กรุณาตรวจสอบใหม่"}), 400
 
     if payment_status != 'Hold':
-        # 3. Add/subtract points to customer if applicable
         if customer_id and (earned_points > 0 or redeemed_points > 0):
-            c.execute('UPDATE Customers SET points = points + ? - ? WHERE id = ?', (earned_points, redeemed_points, customer_id))
+            c.execute('UPDATE Customers SET points = points + ? - ? WHERE id = ?',
+                      (earned_points, redeemed_points, customer_id))
             if redeemed_points > 0:
                 c.execute('UPDATE Customers SET allow_points_with_debt = 0 WHERE id = ?', (customer_id,))
 
     conn.commit()
     conn.close()
-    return jsonify({"message": "Sale completed successfully", "sale_id": sale_id,
-                    "loyalty_discount": loyalty_discount}), 201
+    return jsonify({
+        "message": "Sale completed successfully",
+        "sale_id": sale_id,
+        "loyalty_discount": loyalty_discount,
+        "promo_discount": promo_discount,
+        "manual_discount": manual_discount,
+        "total_amount": total_amount,
+        "applied_promotions": applied_promotions
+    }), 201
 
 
 @app.route('/api/sales/held', methods=['GET'])
@@ -1249,10 +1721,12 @@ def void_sale(sale_id):
         WHERE si.sale_id = ?
     ''', (sale_id,)).fetchall()
 
+    loyalty_config = get_loyalty_config()
     earned_points = 0
     for item in items:
-        if item['product_type'] == 'Brewed Drink':
-            earned_points += item['qty']
+        # ตอนขายบิลที่แลกแต้มจะไม่ได้แต้มใหม่ (ดู checkout_sale) จึงไม่ต้องหักแต้มคืนตอน void
+        if (not (sale_detail and sale_detail['redeemed_points'])) and loyalty_config['enabled'] and item['product_type'] in loyalty_config['drink_types']:
+            earned_points += item['qty'] * loyalty_config['points_per_cup']
         
         # ตรวจ BOM เพื่อคืนสต็อกวัตถุดิบ
         bom_items = c.execute('SELECT raw_material_id, qty_required FROM BOM WHERE product_id = ?',
@@ -1836,9 +2310,14 @@ def receipt(sale_id):
         JOIN Products_Services p ON si.product_id = p.id
         WHERE si.sale_id = ?
     ''', (sale_id,)).fetchall()
+    
+    promos = conn.execute('''
+        SELECT * FROM Sale_Promotions WHERE sale_id = ?
+    ''', (sale_id,)).fetchall()
     conn.close()
     
-    return render_template('receipt.html', sale=dict(sale), items=[dict(ix) for ix in items])
+    return render_template('receipt.html', sale=dict(sale), items=[dict(ix) for ix in items],
+                           promotions=[dict(p) for p in promos])
 
 @app.route('/purchase-receipt/<int:purchase_id>')
 def purchase_receipt(purchase_id):
@@ -1906,14 +2385,24 @@ def get_reports():
         JOIN Products_Services p ON si.product_id = p.id
         WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')
     """
-    brewed_query = """
+    loyalty_config = get_loyalty_config()
+    drink_types = loyalty_config['drink_types'] or ['Brewed Drink']
+    dt_ph = ', '.join(['?'] * len(drink_types))
+
+    brewed_query = f"""
         SELECT SUM(si.qty * si.price) as brewed_total
         FROM Sale_Items si
         JOIN Sales s ON si.sale_id = s.id
         JOIN Products_Services p ON si.product_id = p.id
-        WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ') AND p.type = 'Brewed Drink'
+        WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ') AND p.type IN ({dt_ph})
     """
     free_drinks_query = "SELECT SUM(redeemed_points) as total_redeemed FROM Sales WHERE payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')"
+    promo_discount_query = """
+        SELECT SUM(discount_amount) as promo_total
+        FROM Sale_Promotions sp
+        JOIN Sales s ON sp.sale_id = s.id
+        WHERE s.payment_status NOT IN ('ยกเลิกบิล', 'ชำระบิลค้างชำระ')
+    """
     
     adjustment_query = """
         SELECT SUM(c.variance * p.cost) as total_adjustment
@@ -1924,6 +2413,8 @@ def get_reports():
     """
     
     params = []
+    brewed_params = list(drink_types)
+    promo_params = []
     
     if start_date and end_date:
         # SQLite DATETIME works well with 'YYYY-MM-DD HH:MM:SS'
@@ -1943,6 +2434,7 @@ def get_reports():
         purchases_query += date_filter
         recent_sales_query += date_filter
         free_drinks_query += date_filter
+        promo_discount_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
         
         # for join query
         item_sales_query += " AND s.timestamp >= ? AND s.timestamp <= ?"
@@ -1952,6 +2444,8 @@ def get_reports():
         
         # params for each query
         params = [start, end]
+        brewed_params.extend([start, end])
+        promo_params = [start, end]
 
     # Total Revenue from Sales (excluding voided)
     sales_result = conn.execute(sales_query, params).fetchone()
@@ -1959,6 +2453,9 @@ def get_reports():
     
     discount_result = conn.execute(discount_query, params).fetchone()
     total_discount = discount_result['total_discount'] if discount_result['total_discount'] else 0.0
+
+    promo_result = conn.execute(promo_discount_query, promo_params).fetchone()
+    promo_discount_total = promo_result['promo_total'] if promo_result and promo_result['promo_total'] else 0.0
     
     cash_result = conn.execute(cash_query, params).fetchone()
     cash_total = cash_result['cash_total'] if cash_result['cash_total'] else 0.0
@@ -1975,12 +2472,13 @@ def get_reports():
     cost_result = conn.execute(cost_query, params).fetchone()
     total_cost = cost_result['total_cost'] if cost_result['total_cost'] else 0.0
     
-    brewed_result = conn.execute(brewed_query, params).fetchone()
+    brewed_result = conn.execute(brewed_query, brewed_params).fetchone()
     brewed_total = brewed_result['brewed_total'] if brewed_result['brewed_total'] else 0.0
     
     free_drinks_result = conn.execute(free_drinks_query, params).fetchone()
     total_redeemed_pts = free_drinks_result['total_redeemed'] if free_drinks_result['total_redeemed'] else 0
-    total_free_drinks = int(total_redeemed_pts / 10)
+    pts_unit = loyalty_config['points_per_unit']
+    total_free_drinks = int(total_redeemed_pts / pts_unit) if pts_unit > 0 else 0
 
     # Total Expenses
     expenses_result = conn.execute(expenses_query, params).fetchone()
@@ -2012,6 +2510,7 @@ def get_reports():
     return jsonify({
         "total_revenue": total_revenue,
         "total_discount": total_discount,
+        "promo_discount_total": promo_discount_total,
         "total_cost": total_cost,
         "total_purchases": total_purchases,
         "cash_total": cash_total,
@@ -2024,6 +2523,7 @@ def get_reports():
         "total_owner_draw": total_owner_draw,
         "total_adjustment": total_adjustment,
         "net_profit": net_profit,
+        "loyalty_drink_types": loyalty_config['drink_types'],
         "recent_sales": [dict(ix) for ix in recent_sales],
         "item_sales": [dict(ix) for ix in item_sales]
     })
@@ -2157,16 +2657,67 @@ def get_settings_api():
     conn.close()
     return jsonify({r['key']: r['value'] for r in rows})
 
+@app.route('/api/loyalty/config', methods=['GET'])
+def get_loyalty_config_api():
+    return jsonify(get_loyalty_config())
+
+@app.route('/api/product-types', methods=['GET'])
+def get_product_types_api():
+    conn = get_db_connection()
+    rows = conn.execute("SELECT DISTINCT type FROM Products_Services WHERE type IS NOT NULL AND type != ''").fetchall()
+    conn.close()
+    types = list({r['type'] for r in rows})
+    default_types = [
+        "Brewed Drink", "Stationery", "Gift shop", "Dolls",
+        "Toys", "Perfume", "IT equipment", "Water", "Soft drinks", "Retail"
+    ]
+    for dt in default_types:
+        if dt not in types:
+            types.append(dt)
+    types.sort()
+    return jsonify(types)
+
 @app.route('/api/settings', methods=['PUT'])
 @require_role('Admin')
 def update_settings_api():
     data = request.get_json() or {}
+
+    # ตรวจสอบความถูกต้องของค่า Loyalty Settings
+    if 'loyalty_points_per_unit' in data:
+        try:
+            ppu = int(data['loyalty_points_per_unit'])
+            if ppu <= 0:
+                return jsonify({'error': 'แต้มที่ใช้ต่อ 1 หน่วยแลก ต้องมากกว่า 0 (ห้ามเป็น 0 หรือติดลบ)'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'แต้มที่ใช้ต่อ 1 หน่วยแลก ต้องเป็นจำนวนเต็มที่มากกว่า 0'}), 400
+
+    if 'loyalty_points_per_cup' in data:
+        try:
+            ppc = int(data['loyalty_points_per_cup'])
+            if ppc < 0:
+                return jsonify({'error': 'แต้มที่ได้ต่อแก้ว ต้องไม่ติดลบ'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'แต้มที่ได้ต่อแก้ว ต้องเป็นจำนวนเต็ม'}), 400
+
+    if 'loyalty_discount_per_unit' in data:
+        try:
+            dpu = float(data['loyalty_discount_per_unit'])
+            if dpu < 0:
+                return jsonify({'error': 'ส่วนลดต่อหน่วยแลก ต้องไม่ติดลบ'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'ส่วนลดต่อหน่วยแลก ต้องเป็นตัวเลข'}), 400
+
     conn = get_db_connection()
     for key, value in data.items():
-        conn.execute('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)', (key, str(value)))
+        if isinstance(value, (list, dict)):
+            import json
+            val_str = json.dumps(value, ensure_ascii=False)
+        else:
+            val_str = str(value)
+        conn.execute('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)', (key, val_str))
     conn.commit()
     conn.close()
-    log_action('UPDATE_SETTINGS', f'Updated {len(data)} settings keys')
+    log_action('UPDATE_SETTINGS', f'Updated {len(data)} settings keys: {", ".join(data.keys())}')
     return jsonify({'message': 'บันทึกการตั้งค่าสำเร็จ'})
 
 # ---- Audit Log ----
@@ -2214,7 +2765,7 @@ def delete_expense(expense_id):
     log_action('DELETE_EXPENSE', f'Deleted expense: {desc}', 'Expense', expense_id)
     return jsonify({'message': 'ลบรายการค่าใช้จ่ายสำเร็จ'})
 
-# ---- Promotions CRUD ----
+# ---- Promotions CRUD & Evaluate ----
 @app.route('/promotions')
 def promotions_page():
     return render_template('promotions.html')
@@ -2222,7 +2773,7 @@ def promotions_page():
 @app.route('/api/promotions', methods=['GET'])
 def get_promotions():
     conn = get_db_connection()
-    promos = conn.execute('SELECT * FROM Promotions ORDER BY is_active DESC, id DESC').fetchall()
+    promos = conn.execute('SELECT * FROM Promotions ORDER BY is_active DESC, priority DESC, id DESC').fetchall()
     conn.close()
     return jsonify([dict(p) for p in promos])
 
@@ -2231,37 +2782,85 @@ def add_promotion():
     if session.get('role') not in ('Admin', 'Manager'):
         return jsonify({'error': 'Access denied'}), 403
     data = request.get_json() or {}
-    name = data.get('name')
-    promo_type = data.get('promo_type')
-    discount_value = float(data.get('discount_value', 0))
-    condition_type = data.get('condition_type', '')
-    condition_value = float(data.get('condition_value', 0))
+    name = str(data.get('name') or '').strip()
+    promo_type = str(data.get('promo_type') or '').strip()
+    discount_value = max(0.0, float(data.get('discount_value', 0) or 0))
+    condition_type = str(data.get('condition_type') or 'none').strip()
+    condition_value = max(0.0, float(data.get('condition_value', 0) or 0))
     is_active = int(data.get('is_active', 1))
+    description = str(data.get('description') or '').strip()
+    target_scope = str(data.get('target_scope') or 'all').strip()
+    target_value = str(data.get('target_value') or '').strip()
+    start_date = str(data.get('start_date') or '').strip()
+    end_date = str(data.get('end_date') or '').strip()
+    priority = int(data.get('priority', 0) or 0)
+    max_discount = max(0.0, float(data.get('max_discount', 0) or 0))
+    is_stackable = int(data.get('is_stackable', 1))
+    allow_with_loyalty = int(data.get('allow_with_loyalty', 1))
+
     if not name or not promo_type:
         return jsonify({'message': 'กรุณาระบุชื่อและประเภทโปรโมชั่น'}), 400
+
     conn = get_db_connection()
-    conn.execute(
-        'INSERT INTO Promotions (name, promo_type, discount_value, condition_type, condition_value, is_active) VALUES (?,?,?,?,?,?)',
-        (name, promo_type, discount_value, condition_type, condition_value, is_active)
-    )
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO Promotions (
+            name, promo_type, discount_value, condition_type, condition_value, is_active,
+            description, target_scope, target_value, start_date, end_date, priority,
+            max_discount, is_stackable, allow_with_loyalty, min_spend
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        name, promo_type, discount_value, condition_type, condition_value, is_active,
+        description, target_scope, target_value, start_date, end_date, priority,
+        max_discount, is_stackable, allow_with_loyalty, condition_value if condition_type == 'min_spend' else 0
+    ))
+    promo_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({'message': 'เพิ่มโปรโมชั่นสำเร็จ'}), 201
+    log_action('CREATE_PROMOTION', f'Created promotion #{promo_id}: {name}', 'Promotion', promo_id)
+    return jsonify({'message': 'เพิ่มโปรโมชั่นสำเร็จ', 'id': promo_id}), 201
 
 @app.route('/api/promotions/<int:promo_id>', methods=['PUT'])
 def update_promotion(promo_id):
     if session.get('role') not in ('Admin', 'Manager'):
         return jsonify({'error': 'Access denied'}), 403
     data = request.get_json() or {}
+    name = str(data.get('name') or '').strip()
+    promo_type = str(data.get('promo_type') or '').strip()
+    discount_value = max(0.0, float(data.get('discount_value', 0) or 0))
+    condition_type = str(data.get('condition_type') or 'none').strip()
+    condition_value = max(0.0, float(data.get('condition_value', 0) or 0))
+    is_active = int(data.get('is_active', 1))
+    description = str(data.get('description') or '').strip()
+    target_scope = str(data.get('target_scope') or 'all').strip()
+    target_value = str(data.get('target_value') or '').strip()
+    start_date = str(data.get('start_date') or '').strip()
+    end_date = str(data.get('end_date') or '').strip()
+    priority = int(data.get('priority', 0) or 0)
+    max_discount = max(0.0, float(data.get('max_discount', 0) or 0))
+    is_stackable = int(data.get('is_stackable', 1))
+    allow_with_loyalty = int(data.get('allow_with_loyalty', 1))
+
+    if not name or not promo_type:
+        return jsonify({'message': 'กรุณาระบุชื่อและประเภทโปรโมชั่น'}), 400
+
     conn = get_db_connection()
-    conn.execute(
-        'UPDATE Promotions SET name=?,promo_type=?,discount_value=?,condition_type=?,condition_value=?,is_active=? WHERE id=?',
-        (data.get('name'), data.get('promo_type'), float(data.get('discount_value', 0)),
-         data.get('condition_type', ''), float(data.get('condition_value', 0)),
-         int(data.get('is_active', 1)), promo_id)
-    )
+    conn.execute('''
+        UPDATE Promotions SET
+            name=?, promo_type=?, discount_value=?, condition_type=?, condition_value=?, is_active=?,
+            description=?, target_scope=?, target_value=?, start_date=?, end_date=?, priority=?,
+            max_discount=?, is_stackable=?, allow_with_loyalty=?, min_spend=?
+        WHERE id=?
+    ''', (
+        name, promo_type, discount_value, condition_type, condition_value, is_active,
+        description, target_scope, target_value, start_date, end_date, priority,
+        max_discount, is_stackable, allow_with_loyalty,
+        condition_value if condition_type == 'min_spend' else 0,
+        promo_id
+    ))
     conn.commit()
     conn.close()
+    log_action('UPDATE_PROMOTION', f'Updated promo #{promo_id}: {name}', 'Promotion', promo_id)
     return jsonify({'message': 'อัปเดตโปรโมชั่นสำเร็จ'})
 
 @app.route('/api/promotions/<int:promo_id>', methods=['DELETE'])
@@ -2269,10 +2868,12 @@ def delete_promotion(promo_id):
     if session.get('role') not in ('Admin',):
         return jsonify({'error': 'Access denied'}), 403
     conn = get_db_connection()
+    promo = conn.execute('SELECT name FROM Promotions WHERE id=?', (promo_id,)).fetchone()
     conn.execute('DELETE FROM Promotions WHERE id=?', (promo_id,))
     conn.commit()
     conn.close()
-    log_action('DELETE_PROMOTION', f'Deleted promo #{promo_id}', 'Promotion', promo_id)
+    promo_name = promo['name'] if promo else f'#{promo_id}'
+    log_action('DELETE_PROMOTION', f'Deleted promo #{promo_id} ({promo_name})', 'Promotion', promo_id)
     return jsonify({'message': 'ลบโปรโมชั่นสำเร็จ'})
 
 @app.route('/api/promotions/<int:promo_id>/toggle', methods=['POST'])
@@ -2282,10 +2883,29 @@ def toggle_promotion(promo_id):
     conn = get_db_connection()
     conn.execute('UPDATE Promotions SET is_active = 1 - is_active WHERE id=?', (promo_id,))
     conn.commit()
-    promo = conn.execute('SELECT is_active FROM Promotions WHERE id=?', (promo_id,)).fetchone()
+    promo = conn.execute('SELECT name, is_active FROM Promotions WHERE id=?', (promo_id,)).fetchone()
     conn.close()
     status = 'เปิดใช้งาน' if promo and promo['is_active'] else 'ปิดใช้งาน'
+    p_name = promo['name'] if promo else f'#{promo_id}'
+    log_action('TOGGLE_PROMOTION', f'Toggled promo #{promo_id} ({p_name}) to {status}', 'Promotion', promo_id)
     return jsonify({'message': f'โปรโมชั่น{status}แล้ว', 'is_active': promo['is_active'] if promo else 0})
+
+@app.route('/api/promotions/evaluate', methods=['POST'])
+def evaluate_promotions_api():
+    """API ประเมินโปรโมชั่นที่ใช้ได้และคำนวณส่วนลดตามตะกร้าสินค้า"""
+    data = request.get_json() or {}
+    items = data.get('items', [])
+    customer_id = data.get('customer_id')
+    redeemed_points = int(data.get('redeemed_points', 0) or 0)
+    selected_promo_ids = data.get('selected_promo_ids') or data.get('promo_ids')
+
+    result = evaluate_promotions_logic(
+        items=items,
+        customer_id=customer_id,
+        redeemed_points=redeemed_points,
+        selected_promo_ids=selected_promo_ids
+    )
+    return jsonify(result)
 
 # ---- BOM CRUD ----
 @app.route('/api/bom', methods=['GET'])
@@ -2571,10 +3191,14 @@ def get_sale_detail(sale_id):
         JOIN Products_Services p ON si.product_id = p.id
         WHERE si.sale_id = ?
     ''', (sale_id,)).fetchall()
+    promos = conn.execute('''
+        SELECT * FROM Sale_Promotions WHERE sale_id = ?
+    ''', (sale_id,)).fetchall()
     conn.close()
     return jsonify({
         'sale': dict(sale),
-        'items': [dict(i) for i in items]
+        'items': [dict(i) for i in items],
+        'promotions': [dict(p) for p in promos]
     })
 
 def crc16_ccitt(data):

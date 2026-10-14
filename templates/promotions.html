@@ -7,60 +7,171 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body { font-family: 'Sarabun', sans-serif; background-color: #f4f6f9; }
-  .glass-card { background: rgba(255, 255, 255, 0.95); border: none; border-radius: 16px; padding: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); }
+  body { font-family: 'Sarabun', sans-serif; background-color: #f4f6f9; color: #1e293b; }
+  .glass-card { background: rgba(255, 255, 255, 0.98); border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
   .hero-title { font-weight: 800; background: linear-gradient(135deg, #0d6efd, #0dcaf0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .table th { background-color: #f8f9fa; color: #555; }
+  .table th { background-color: #f8fafc; color: #475569; font-weight: 600; font-size: 13px; }
+  .table td { vertical-align: middle; font-size: 14px; }
+  .badge-scope { background: #e0e7ff; color: #3730a3; font-weight: 600; }
+  .hint-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #166534; margin-bottom: 14px; }
 </style>
 </head>
 <body>
-<div class="container py-5">
+<div class="container-fluid px-4 py-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="hero-title m-0">🎁 ระบบโปรโมชั่น (Promotions)</h2>
-    <a href="/" class="btn btn-outline-secondary rounded-pill fw-bold">⬅ กลับหน้าหลัก</a>
+    <div>
+      <h2 class="hero-title m-0">🎁 จัดการโปรโมชั่นและแคมเปญส่วนลด (Promotions)</h2>
+      <p class="text-muted small m-0 mt-1">กำหนดโปรโมชั่น เงื่อนไขส่วนลด ลำดับความสำคัญ และขอบเขตสินค้าสำหรับการขายหน้าร้าน</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/settings" class="btn btn-outline-primary rounded-pill fw-bold">⚙️ ตั้งค่าระบบ</a>
+      <a href="/" class="btn btn-outline-secondary rounded-pill fw-bold">⬅ กลับหน้าหลัก</a>
+    </div>
   </div>
 
   <div class="row g-4">
     <!-- Form Create Promotion -->
-    <div class="col-md-4">
+    <div class="col-lg-4 col-md-5">
       <div class="glass-card">
-        <h5 class="fw-bold mb-3">➕ สร้างโปรโมชั่นใหม่</h5>
+        <h5 class="fw-bold mb-3 d-flex align-items-center gap-2">
+          <span>➕</span> สร้างโปรโมชั่นใหม่
+        </h5>
+
         <form id="promoForm">
           <div class="mb-3">
-            <label class="form-label small fw-bold text-muted">ชื่อโปรโมชั่น</label>
-            <input type="text" class="form-control" id="pName" placeholder="เช่น ซื้อ 10 แก้ว ฟรี 1 แก้ว" required>
+            <label class="form-label small fw-bold text-muted">ชื่อโปรโมชั่น <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="pName" placeholder="เช่น ซื้อครบ 100 ลด 10 บาท" required>
           </div>
+
           <div class="mb-3">
-            <label class="form-label small fw-bold text-muted">รายละเอียด (ตัวเลือก)</label>
-            <textarea class="form-control" id="pDesc" rows="2"></textarea>
+            <label class="form-label small fw-bold text-muted">รายละเอียด / เงื่อนไขเพิ่มเติม</label>
+            <textarea class="form-control" id="pDesc" rows="2" placeholder="เช่น เฉพาะวันจันทร์-ศุกร์ หรือโปรโมชั่นเปิดเทอม"></textarea>
           </div>
+
           <div class="mb-3">
-            <label class="form-label small fw-bold text-muted">ประเภทโปรโมชั่น</label>
-            <select class="form-select" id="pType" required>
-              <option value="discount">ลดราคาสินค้า</option>
-              <option value="freebie">แถมฟรี (Buy X Get Y)</option>
-              <option value="bill_discount">ส่วนลดท้ายบิล</option>
+            <label class="form-label small fw-bold text-muted">ประเภทโปรโมชั่น <span class="text-danger">*</span></label>
+            <select class="form-select fw-bold" id="pType" required onchange="handleTypeChange('p')">
+              <option value="spend_threshold" selected>💰 ซื้อครบ X บาท ลด Y บาท (ยอดซื้อขั้นต่ำ)</option>
+              <option value="percent_bill">🏷️ ลดเป็น % ทั้งบิล (คิดจากยอดรวม)</option>
+              <option value="fixed_bill">💵 ลดเป็นบาททั้งบิล (หักยอดรวม)</option>
+              <option value="percent_category">🍹 ลดเป็น % ตามหมวดหมู่ (เช่น เครื่องดื่มชง)</option>
+              <option value="fixed_category">☕ ลดเป็นบาทต่อชิ้นตามหมวดหมู่</option>
+              <option value="percent_product">📦 ลดเป็น % เฉพาะสินค้าที่เลือก</option>
+              <option value="fixed_product">🎯 ลดเป็นบาทต่อชิ้นเฉพาะสินค้าที่เลือก</option>
+              <option value="buy_x_get_y">🎁 ซื้อครบ X ชิ้น ลด/แถม Y ชิ้น (Buy X Get Y)</option>
+              <option value="loyalty_redeem">⭐ แลกแต้ม: ใช้ X แต้ม แลกแก้วราคาพิเศษ Y บาท (เช่น สะสมครบ 10 แก้ว แก้วที่ 11 ราคา 15 บาท)</option>
             </select>
           </div>
-          <div class="mb-3">
-            <label class="form-label small fw-bold text-muted">เงื่อนไข/มูลค่า (เช่น ลด 10 บาท หรือ ซื้อ 10)</label>
-            <input type="number" class="form-control" id="pValue" required>
+
+          <!-- Dynamic Hint Box -->
+          <div id="pHint" class="hint-box">
+            💡 <strong>คำแนะนำ:</strong> กรอกยอดซื้อขั้นต่ำในช่อง "ค่าเงื่อนไข" และกรอกจำนวนเงินส่วนลดในช่อง "มูลค่าส่วนลด"
           </div>
-          <button type="submit" class="btn btn-primary w-100 rounded-pill fw-bold">บันทึกโปรโมชั่น</button>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted" id="pValueLabel">มูลค่าส่วนลด (บาท / %) <span class="text-danger">*</span></label>
+              <input type="number" step="0.01" min="0" class="form-control fw-bold" id="pValue" placeholder="เช่น 10" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">ส่วนลดสูงสุด (0 = ไม่จำกัด)</label>
+              <input type="number" step="0.01" min="0" class="form-control" id="pMaxDiscount" value="0">
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">เงื่อนไขขั้นต่ำ</label>
+              <select class="form-select" id="pConditionType">
+                <option value="none">ไม่มีเงื่อนไขขั้นต่ำ</option>
+                <option value="min_spend" selected>ยอดซื้อรวมขั้นต่ำ (บาท)</option>
+                <option value="min_qty">จำนวนชิ้นขั้นต่ำ (ชิ้น)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted" id="pCondValLabel">ค่าเงื่อนไข (บาท/ชิ้น)</label>
+              <input type="number" step="0.01" min="0" class="form-control" id="pConditionValue" value="100">
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">ขอบเขตสินค้า</label>
+              <select class="form-select" id="pScope" onchange="handleScopeChange('p')">
+                <option value="all">สินค้าทุกรายการ</option>
+                <option value="category">ตามหมวดหมู่สินค้า</option>
+                <option value="product">ตามรหัสสินค้าเฉพาะรายการ</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">หมวดหมู่ / รหัสสินค้า</label>
+              <div id="pTargetContainer">
+                <input type="text" class="form-control" id="pTargetValue" placeholder="ทุกสินค้า" readonly>
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">วันที่เริ่มต้น (ปล่อยว่างได้)</label>
+              <input type="date" class="form-control" id="pStartDate">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">วันที่สิ้นสุด (ปล่อยว่างได้)</label>
+              <input type="date" class="form-control" id="pEndDate">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">ลำดับความสำคัญ (Priority ยิ่งสูงยิ่งคิดก่อน)</label>
+            <input type="number" class="form-control" id="pPriority" value="10" min="0" step="1">
+          </div>
+
+          <div class="mb-3 p-3 bg-light rounded-3 border">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="pStackable" checked>
+              <label class="form-check-label small fw-bold" for="pStackable">
+                ใช้ร่วมกับโปรโมชั่นอื่นได้ (Stackable)
+              </label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="pAllowLoyalty" checked>
+              <label class="form-check-label small fw-bold" for="pAllowLoyalty">
+                ใช้ร่วมกับการแลกแต้มสะสมได้
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pIsActive" checked>
+              <label class="form-check-label small fw-bold" for="pIsActive">
+                เปิดใช้งานทันที
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 rounded-pill fw-bold py-2 shadow-sm">
+            💾 บันทึกโปรโมชั่น
+          </button>
         </form>
       </div>
     </div>
 
     <!-- Promotions List -->
-    <div class="col-md-8">
+    <div class="col-lg-8 col-md-7">
       <div class="glass-card">
-        <h5 class="fw-bold mb-3">รายการโปรโมชั่นทั้งหมด</h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold m-0">📋 รายการโปรโมชั่นทั้งหมด (<span id="promoCount">0</span>)</h5>
+          <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold px-3" onclick="fetchPromos()">🔄 รีเฟรช</button>
+        </div>
+
         <div class="table-responsive">
           <table class="table table-hover align-middle">
             <thead>
               <tr>
-                <th>ชื่อโปรโมชั่น</th>
-                <th>ประเภท</th>
+                <th style="width: 25%;">ชื่อโปรโมชั่น</th>
+                <th>ประเภท / ขอบเขต</th>
+                <th>มูลค่า / เงื่อนไข</th>
+                <th>ความสำคัญ / กติกา</th>
+                <th>ระยะเวลา</th>
                 <th class="text-center">สถานะ</th>
                 <th class="text-end">จัดการ</th>
               </tr>
@@ -75,33 +186,322 @@
   </div>
 </div>
 
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title fw-bold">✏️ แก้ไขโปรโมชั่น</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <form id="editForm">
+          <input type="hidden" id="eId">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">ชื่อโปรโมชั่น <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="eName" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">ประเภทโปรโมชั่น <span class="text-danger">*</span></label>
+              <select class="form-select fw-bold" id="eType" required onchange="handleTypeChange('e')">
+                <option value="spend_threshold">💰 ซื้อครบ X บาท ลด Y บาท</option>
+                <option value="percent_bill">🏷️ ลดเป็น % ทั้งบิล</option>
+                <option value="fixed_bill">💵 ลดเป็นบาททั้งบิล</option>
+                <option value="percent_category">🍹 ลดเป็น % ตามหมวดหมู่</option>
+                <option value="fixed_category">☕ ลดเป็นบาทต่อชิ้นตามหมวดหมู่</option>
+                <option value="percent_product">📦 ลดเป็น % เฉพาะสินค้า</option>
+                <option value="fixed_product">🎯 ลดเป็นบาทต่อชิ้นเฉพาะสินค้า</option>
+                <option value="buy_x_get_y">🎁 ซื้อครบ X ชิ้น ลด/แถม Y ชิ้น</option>
+                <option value="loyalty_redeem">⭐ แลกแต้ม: ใช้ X แต้ม แลกแก้วราคาพิเศษ Y บาท</option>
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">รายละเอียด</label>
+              <textarea class="form-control" id="eDesc" rows="2"></textarea>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted" id="eValueLabel">มูลค่าส่วนลด</label>
+              <input type="number" step="0.01" min="0" class="form-control fw-bold" id="eValue" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">ส่วนลดสูงสุด (0 = ไม่จำกัด)</label>
+              <input type="number" step="0.01" min="0" class="form-control" id="eMaxDiscount">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">เงื่อนไขขั้นต่ำ</label>
+              <select class="form-select" id="eConditionType">
+                <option value="none">ไม่มีเงื่อนไขขั้นต่ำ</option>
+                <option value="min_spend">ยอดซื้อรวมขั้นต่ำ (บาท)</option>
+                <option value="min_qty">จำนวนชิ้นขั้นต่ำ (ชิ้น)</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">ค่าเงื่อนไข</label>
+              <input type="number" step="0.01" min="0" class="form-control" id="eConditionValue">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">ขอบเขตสินค้า</label>
+              <select class="form-select" id="eScope" onchange="handleScopeChange('e')">
+                <option value="all">สินค้าทุกรายการ</option>
+                <option value="category">ตามหมวดหมู่สินค้า</option>
+                <option value="product">ตามรหัสสินค้าเฉพาะรายการ</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">หมวดหมู่ / รหัสสินค้า</label>
+              <div id="eTargetContainer">
+                <input type="text" class="form-control" id="eTargetValue">
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">วันที่เริ่มต้น</label>
+              <input type="date" class="form-control" id="eStartDate">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">วันที่สิ้นสุด</label>
+              <input type="date" class="form-control" id="eEndDate">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">ลำดับความสำคัญ (Priority)</label>
+              <input type="number" class="form-control" id="ePriority" min="0" step="1">
+            </div>
+
+            <div class="col-md-6">
+              <div class="p-2 border rounded bg-light">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="eStackable">
+                  <label class="form-check-label small fw-bold" for="eStackable">ใช้ร่วมกับโปรอื่นได้</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="eAllowLoyalty">
+                  <label class="form-check-label small fw-bold" for="eAllowLoyalty">ใช้ร่วมกับแต้มสะสมได้</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="eIsActive">
+                  <label class="form-check-label small fw-bold" for="eIsActive">เปิดใช้งาน</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 text-end">
+            <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">💾 บันทึกการแก้ไข</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+  let cachedPromos = [];
+  let availableProductTypes = [];
+
+  const typeLabels = {
+    'spend_threshold': '💰 ซื้อครบ X ลด Y',
+    'percent_bill': '🏷️ ลด % ทั้งบิล',
+    'fixed_bill': '💵 ลดบาททั้งบิล',
+    'percent_category': '🍹 ลด % ตามหมวดหมู่',
+    'fixed_category': '☕ ลดบาทตามหมวดหมู่',
+    'percent_product': '📦 ลด % เฉพาะสินค้า',
+    'fixed_product': '🎯 ลดบาทเฉพาะสินค้า',
+    'buy_x_get_y': '🎁 ซื้อ X แถม Y',
+    'loyalty_redeem': '⭐ แลกแต้มราคาพิเศษ',
+    'discount': '💵 ส่วนลด',
+    'bill_discount': '💵 ส่วนลดท้ายบิล',
+    'freebie': '🎁 แถมฟรี'
+  };
+
+  const scopeLabels = {
+    'all': 'ทุกสินค้า',
+    'category': 'ตามหมวดหมู่',
+    'product': 'เฉพาะสินค้า'
+  };
+
+  // แมปชื่อหมวดหมู่สินค้าเป็นภาษาไทยให้ตรงกับคลังสินค้า (Inventory)
+  const typeThaiMap = {
+    "Retail": "สินค้าทั่วไป (Retail)",
+    "Service": "งานบริการ",
+    "Stationery": "เครื่องเขียน",
+    "Gift shop": "กิ๊ฟช๊อป",
+    "Dolls": "ตุ๊กตา",
+    "Toys": "ของเล่น",
+    "Perfume": "น้ำหอม",
+    "IT equipment": "อุปกรณ์ IT",
+    "Brewed Drink": "เครื่องดื่มชง",
+    "Water": "น้ำเปล่า",
+    "Soft drinks": "น้ำอัดลม"
+  };
+
+  async function loadInitialData() {
+    try {
+      const res = await fetch('/api/product-types');
+      availableProductTypes = await res.json();
+    } catch(err) {
+      availableProductTypes = [
+        'Retail', 'Service', 'Stationery', 'Gift shop', 'Dolls',
+        'Toys', 'Perfume', 'IT equipment', 'Brewed Drink', 'Water', 'Soft drinks'
+      ];
+    }
+    handleScopeChange('p');
+    await fetchPromos();
+  }
+
+  function handleTypeChange(prefix) {
+    const pType = document.getElementById(prefix + 'Type').value;
+    const hint = document.getElementById(prefix + 'Hint');
+    const valLabel = document.getElementById(prefix + 'ValueLabel');
+    const condLabelReset = document.getElementById(prefix + 'CondValLabel');
+    if (condLabelReset) condLabelReset.innerText = 'ค่าเงื่อนไข (บาท/ชิ้น)';
+
+    if (pType.includes('_category')) {
+      const scopeSelect = document.getElementById(prefix + 'Scope');
+      if (scopeSelect && scopeSelect.value !== 'category') {
+        scopeSelect.value = 'category';
+        handleScopeChange(prefix);
+      }
+    } else if (pType.includes('_product')) {
+      const scopeSelect = document.getElementById(prefix + 'Scope');
+      if (scopeSelect && scopeSelect.value !== 'product') {
+        scopeSelect.value = 'product';
+        handleScopeChange(prefix);
+      }
+    }
+
+    if (pType === 'spend_threshold') {
+      if(hint) hint.innerHTML = '💡 <strong>ซื้อครบ X ลด Y:</strong> ใส่ยอดซื้อขั้นต่ำ (บาท) ใน "ค่าเงื่อนไข" และใส่ส่วนลด (บาท) ใน "มูลค่าส่วนลด"';
+      if(valLabel) valLabel.innerText = 'ส่วนลดที่ได้ (บาท) *';
+      document.getElementById(prefix + 'ConditionType').value = 'min_spend';
+    } else if (pType.includes('percent')) {
+      if(hint) hint.innerHTML = '💡 <strong>ลดเป็น %:</strong> ใส่อัตราเปอร์เซ็นต์ส่วนลดใน "มูลค่าส่วนลด" (เช่น 10 = ลด 10%)';
+      if(valLabel) valLabel.innerText = 'อัตราส่วนลด (%) *';
+    } else if (pType === 'buy_x_get_y') {
+      if(hint) hint.innerHTML = '💡 <strong>ซื้อ X แถม Y:</strong> ใส่จำนวนชิ้นที่ต้องซื้อใน "ค่าเงื่อนไข" และใส่จำนวนชิ้นที่แถมใน "มูลค่าส่วนลด"';
+      if(valLabel) valLabel.innerText = 'จำนวนชิ้นที่แถมฟรี *';
+      document.getElementById(prefix + 'ConditionType').value = 'min_qty';
+    } else if (pType === 'loyalty_redeem') {
+      if(hint) hint.innerHTML = '💡 <strong>แลกแต้ม:</strong> ใส่จำนวนแต้มที่ต้องใช้ต่อ 1 แก้วใน "ค่าเงื่อนไข" (เช่น 10) และใส่ราคาพิเศษของแก้วที่แลกใน "มูลค่าส่วนลด" (เช่น 15) เช่น สะสมครบ 10 แก้ว แก้วที่ 11 ราคา 15 บาท — ส่วนลดที่ POS = ราคาแก้ว − ราคาพิเศษ, ถ้ามีหลายโปรจะใช้ Priority สูงสุด, ถ้าไม่มีโปรนี้จะใช้ค่าจากหน้าตั้งค่า';
+      if(valLabel) valLabel.innerText = 'ราคาพิเศษต่อแก้วที่แลก (บาท) *';
+      document.getElementById(prefix + 'ConditionType').value = 'min_qty';
+      const condLbl = document.getElementById(prefix + 'CondValLabel');
+      if (condLbl) condLbl.innerText = 'แต้มที่ใช้ต่อ 1 แก้ว';
+      const scopeSel = document.getElementById(prefix + 'Scope');
+      if (scopeSel && scopeSel.value === 'all') {
+        scopeSel.value = 'category';
+        handleScopeChange(prefix);
+      }
+    } else {
+      if(hint) hint.innerHTML = '💡 <strong>ลดเป็นบาท:</strong> ใส่จำนวนเงินส่วนลดใน "มูลค่าส่วนลด"';
+      if(valLabel) valLabel.innerText = 'มูลค่าส่วนลด (บาท) *';
+    }
+  }
+
+  function handleScopeChange(prefix, selectedValue = '') {
+    const scope = document.getElementById(prefix + 'Scope').value;
+    const container = document.getElementById(prefix + 'TargetContainer');
+
+    if (scope === 'category') {
+      let optionsHtml = availableProductTypes.map(t => {
+        const thaiName = typeThaiMap[t] || t;
+        return `<option value="${t}" ${t === selectedValue ? 'selected' : ''}>${thaiName}</option>`;
+      }).join('');
+      container.innerHTML = `<select class="form-select" id="${prefix}TargetValue">${optionsHtml}</select>`;
+    } else if (scope === 'product') {
+      container.innerHTML = `<input type="text" class="form-control" id="${prefix}TargetValue" value="${selectedValue}" placeholder="ใส่รหัสสินค้า เช่น 1, 2, 5">`;
+    } else {
+      container.innerHTML = `<input type="text" class="form-control text-muted" id="${prefix}TargetValue" value="" placeholder="ทุกสินค้า" readonly>`;
+    }
+  }
+
   async function fetchPromos() {
     try {
       const res = await fetch('/api/promotions');
       const data = await res.json();
+      cachedPromos = data;
+      document.getElementById('promoCount').innerText = data.length;
+
       const tbody = document.getElementById('promoTable');
       tbody.innerHTML = '';
       if(data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">ยังไม่มีโปรโมชั่น</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">ยังไม่มีโปรโมชั่นในระบบ</td></tr>`;
         return;
       }
       data.forEach(p => {
+        const typeBadge = `<span class="badge bg-primary text-white">${typeLabels[p.promo_type] || p.promo_type}</span>`;
+        let targetText = '';
+        if (p.target_value) {
+          if (p.target_scope === 'category') {
+            targetText = ': ' + (typeThaiMap[p.target_value] || p.target_value);
+          } else {
+            targetText = ': ' + p.target_value;
+          }
+        }
+        const scopeBadge = `<span class="badge badge-scope ms-1">${scopeLabels[p.target_scope] || p.target_scope}${targetText}</span>`;
+
+        let discountDisplay = '';
+        if (p.promo_type && p.promo_type.includes('percent')) {
+          discountDisplay = `<strong class="text-danger">ลด ${p.discount_value}%</strong>`;
+        } else if (p.promo_type === 'buy_x_get_y') {
+          discountDisplay = `<strong class="text-success">แถม ${p.discount_value} ชิ้น</strong>`;
+        } else if (p.promo_type === 'loyalty_redeem') {
+          discountDisplay = `<strong class="text-success">แก้วที่แลก ราคา ${p.discount_value} บาท</strong>`;
+        } else {
+          discountDisplay = `<strong class="text-danger">ลด ${p.discount_value} บาท</strong>`;
+        }
+
+        let condDisplay = '<span class="text-muted small">ไม่มีขั้นต่ำ</span>';
+        if (p.promo_type === 'loyalty_redeem') {
+          condDisplay = `<small class="text-muted d-block">ใช้ ${p.condition_value} แต้ม / แก้ว</small>`;
+        } else if (p.condition_type === 'min_spend') {
+          condDisplay = `<small class="text-muted d-block">ซื้อครบ ${p.condition_value} บ.</small>`;
+        } else if (p.condition_type === 'min_qty') {
+          condDisplay = `<small class="text-muted d-block">ซื้อครบ ${p.condition_value} ชิ้น</small>`;
+        }
+
+        const dateDisplay = (p.start_date || p.end_date)
+          ? `<small class="text-muted d-block">${p.start_date || 'ไม่ระบุ'} ถึง ${p.end_date || 'ไม่ระบุ'}</small>`
+          : '<small class="text-muted">ไม่จำกัดวัน</small>';
+
+        const rulesBadges = `
+          <span class="badge bg-light text-dark border">Priority: ${p.priority || 0}</span>
+          ${p.is_stackable ? '<span class="badge bg-success-subtle text-success border">ซ้อนโปรได้</span>' : '<span class="badge bg-warning-subtle text-dark border">โปรเดี่ยว</span>'}
+          ${p.allow_with_loyalty ? '' : '<span class="badge bg-danger-subtle text-danger border">ห้ามใช้คู่แต้ม</span>'}
+        `;
+
         tbody.innerHTML += `
           <tr>
             <td>
               <div class="fw-bold">${p.name}</div>
               <small class="text-muted">${p.description || '-'}</small>
             </td>
-            <td><span class="badge bg-info text-dark">${p.promo_type}</span></td>
+            <td>
+              <div>${typeBadge}</div>
+              <div class="mt-1">${scopeBadge}</div>
+            </td>
+            <td>
+              <div>${discountDisplay}</div>
+              ${condDisplay}
+              ${p.max_discount > 0 ? `<small class="text-muted">ลดสูงสุด ${p.max_discount} บ.</small>` : ''}
+            </td>
+            <td>${rulesBadges}</td>
+            <td>${dateDisplay}</td>
             <td class="text-center">
               <span class="badge ${p.is_active ? 'bg-success' : 'bg-secondary'}">${p.is_active ? 'เปิดใช้งาน' : 'ปิด'}</span>
             </td>
             <td class="text-end">
-              <button class="btn btn-sm btn-${p.is_active ? 'warning' : 'success'} rounded-pill fw-bold" onclick="togglePromo(${p.id})">
+              <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" onclick="openEditModal(${p.id})">แก้ไข</button>
+              <button class="btn btn-sm btn-${p.is_active ? 'warning' : 'success'} rounded-pill fw-bold ms-1" onclick="togglePromo(${p.id})">
                 ${p.is_active ? 'ระงับ' : 'เปิดใช้'}
               </button>
-              <button class="btn btn-sm btn-danger rounded-pill fw-bold ms-1" onclick="deletePromo(${p.id})">ลบ</button>
+              <button class="btn btn-sm btn-outline-danger rounded-pill fw-bold ms-1" onclick="deletePromo(${p.id})">ลบ</button>
             </td>
           </tr>
         `;
@@ -114,11 +514,23 @@
   document.getElementById('promoForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
-      name: document.getElementById('pName').value,
-      description: document.getElementById('pDesc').value,
+      name: document.getElementById('pName').value.trim(),
+      description: document.getElementById('pDesc').value.trim(),
       promo_type: document.getElementById('pType').value,
-      discount_value: document.getElementById('pValue').value
+      discount_value: parseFloat(document.getElementById('pValue').value) || 0,
+      condition_type: document.getElementById('pConditionType').value,
+      condition_value: parseFloat(document.getElementById('pConditionValue').value) || 0,
+      target_scope: document.getElementById('pScope').value,
+      target_value: document.getElementById('pTargetValue').value.trim(),
+      start_date: document.getElementById('pStartDate').value,
+      end_date: document.getElementById('pEndDate').value,
+      priority: parseInt(document.getElementById('pPriority').value) || 0,
+      max_discount: parseFloat(document.getElementById('pMaxDiscount').value) || 0,
+      is_stackable: document.getElementById('pStackable').checked ? 1 : 0,
+      allow_with_loyalty: document.getElementById('pAllowLoyalty').checked ? 1 : 0,
+      is_active: document.getElementById('pIsActive').checked ? 1 : 0
     };
+
     const res = await fetch('/api/promotions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -126,10 +538,78 @@
     });
     if(res.ok) {
       document.getElementById('promoForm').reset();
+      handleTypeChange('p');
+      handleScopeChange('p');
       fetchPromos();
     } else {
       const d = await res.json();
-      alert('Error: ' + d.error);
+      alert('Error: ' + (d.message || d.error));
+    }
+  });
+
+  function openEditModal(promoId) {
+    const p = cachedPromos.find(x => x.id === promoId);
+    if (!p) return;
+
+    document.getElementById('eId').value = p.id;
+    document.getElementById('eName').value = p.name;
+    document.getElementById('eDesc').value = p.description || '';
+    document.getElementById('eType').value = p.promo_type;
+    document.getElementById('eValue').value = p.discount_value;
+    document.getElementById('eMaxDiscount').value = p.max_discount || 0;
+    document.getElementById('eConditionType').value = p.condition_type || 'none';
+    document.getElementById('eConditionValue').value = p.condition_value || 0;
+    document.getElementById('eScope').value = p.target_scope || 'all';
+
+    handleScopeChange('e', p.target_value || '');
+    if(document.getElementById('eTargetValue')) {
+      document.getElementById('eTargetValue').value = p.target_value || '';
+    }
+
+    document.getElementById('eStartDate').value = p.start_date || '';
+    document.getElementById('eEndDate').value = p.end_date || '';
+    document.getElementById('ePriority').value = p.priority || 0;
+    document.getElementById('eStackable').checked = p.is_stackable !== 0;
+    document.getElementById('eAllowLoyalty').checked = p.allow_with_loyalty !== 0;
+    document.getElementById('eIsActive').checked = p.is_active !== 0;
+
+    handleTypeChange('e');
+    const modal = new bootstrap.Modal(document.getElementById('editModal'));
+    modal.show();
+  }
+
+  document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('eId').value;
+    const payload = {
+      name: document.getElementById('eName').value.trim(),
+      description: document.getElementById('eDesc').value.trim(),
+      promo_type: document.getElementById('eType').value,
+      discount_value: parseFloat(document.getElementById('eValue').value) || 0,
+      condition_type: document.getElementById('eConditionType').value,
+      condition_value: parseFloat(document.getElementById('eConditionValue').value) || 0,
+      target_scope: document.getElementById('eScope').value,
+      target_value: document.getElementById('eTargetValue').value.trim(),
+      start_date: document.getElementById('eStartDate').value,
+      end_date: document.getElementById('eEndDate').value,
+      priority: parseInt(document.getElementById('ePriority').value) || 0,
+      max_discount: parseFloat(document.getElementById('eMaxDiscount').value) || 0,
+      is_stackable: document.getElementById('eStackable').checked ? 1 : 0,
+      allow_with_loyalty: document.getElementById('eAllowLoyalty').checked ? 1 : 0,
+      is_active: document.getElementById('eIsActive').checked ? 1 : 0
+    };
+
+    const res = await fetch(`/api/promotions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if(res.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+      fetchPromos();
+    } else {
+      const d = await res.json();
+      alert('Error: ' + (d.message || d.error));
     }
   });
 
@@ -144,7 +624,7 @@
     fetchPromos();
   }
 
-  window.addEventListener('DOMContentLoaded', fetchPromos);
+  window.addEventListener('DOMContentLoaded', loadInitialData);
 </script>
 </body>
 </html>
