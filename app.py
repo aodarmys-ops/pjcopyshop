@@ -35,7 +35,8 @@ except ImportError:
             return decorator
     limiter = DummyLimiter()
 
-DB_FILE = 'xerox.db'
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DB_FILE = os.environ.get('DB_FILE', os.path.join(BASE_DIR, 'xerox.db'))
 
 def get_db_connection():
     def setup_conn(conn):
