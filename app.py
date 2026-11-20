@@ -3,6 +3,7 @@ from flask import g, has_app_context, has_request_context, Flask, jsonify, reque
 from functools import wraps
 import sqlite3
 import os
+import re
 import math
 import datetime
 import random
@@ -961,7 +962,7 @@ def create_backup_zip(conn):
 
 @app.before_request
 def require_login():
-    allowed_routes = ['login', 'static', 'change_password']
+    allowed_routes = ['login', 'static', 'change_password', 'customer_display', 'api_customer_display_state', 'api_customer_display_info']
     if request.endpoint not in allowed_routes and 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -1068,6 +1069,65 @@ def purchases():
 @app.route('/pos')
 def pos():
     return render_template('pos.html')
+
+customer_display_state = {
+    'items': [],
+    'subtotal': 0,
+    'totalDiscount': 0,
+    'total': 0,
+    'paymentMethod': 'Cash',
+    'qrImage': None,
+    'status': 'idle',
+    'timestamp': 0
+}
+
+@app.route('/customer-display')
+def customer_display():
+    shop_name = get_setting('shop_name', 'PJ Copy Shop')
+    return render_template('customer_display.html', shop_name=shop_name)
+
+@app.route('/api/customer-display/state', methods=['GET', 'POST'])
+def api_customer_display_state():
+    global customer_display_state
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        customer_display_state = data
+        return jsonify({'success': True})
+    else:
+        return jsonify(customer_display_state)
+
+@app.route('/api/customer-display/info', methods=['GET'])
+def api_customer_display_info():
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = '127.0.0.1'
+        
+    url = f"http://{ip}:5000/customer-display"
+    
+    qr_b64 = ''
+    try:
+        import qrcode
+        import io
+        import base64
+        img = qrcode.make(url)
+        buf = io.BytesIO()
+        img.save(buf, 'PNG')
+        buf.seek(0)
+        qr_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+    except Exception as e:
+        app.logger.warning(f"Could not generate display info QR: {e}")
+
+    return jsonify({
+        'ip': ip,
+        'url': url,
+        'qr_image': qr_b64
+    })
 
 @app.route('/jobs')
 def jobs():
@@ -3056,6 +3116,9 @@ def get_jobs_history():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
     import traceback
     traceback.print_exc()
     # Log error จริงไว้ใน console แต่ไม่ส่ง internal detail กลับไปยัง client
@@ -3215,23 +3278,37 @@ def crc16_ccitt(data):
     return crc
 
 def generate_promptpay_payload(target, amount=None):
-    target = target.strip()
-    if len(target) == 10:
-        target = '0066' + target[1:]
-    elif len(target) == 13: # National ID
-        target = target
+    target = re.sub(r'[^0-9]', '', str(target or ''))
+    if len(target) == 10 and target.startswith('0'):
+        sub_tag = '01'
+        val = '0066' + target[1:]
+    elif len(target) == 13:
+        sub_tag = '02'
+        val = target
+    else:
+        sub_tag = '01'
+        val = '0066' + target.lstrip('0') if target.startswith('0') else target
         
-    payload = "00020101021129370016A0000006770101110113" + target
+    tag29_value = f"0016A000000677010111{sub_tag}{len(val):02d}{val}"
+    
+    initiation_method = "12" if (amount and float(amount) > 0) else "11"
+    payload = f"0002010102{initiation_method}"
+    payload += f"29{len(tag29_value):02d}{tag29_value}"
     payload += "5802TH5303764"
     if amount:
-        amt_str = f"{float(amount):.2f}"
-        payload += f"54{len(amt_str):02d}{amt_str}"
+        try:
+            amt_num = float(amount)
+            if amt_num > 0:
+                amt_str = f"{amt_num:.2f}"
+                payload += f"54{len(amt_str):02d}{amt_str}"
+        except (ValueError, TypeError):
+            pass
     payload += "6304"
     
     crc = crc16_ccitt(payload.encode('ascii'))
     return payload + f"{crc:04X}"
 
-@app.route('/api/generate-qr', methods=['POST'])
+@app.route('/api/generate-qr', methods=['GET', 'POST'])
 def generate_qr():
     try:
         import qrcode
@@ -3240,8 +3317,12 @@ def generate_qr():
     except ImportError:
         return jsonify({'error': 'Missing libraries'}), 500
         
-    data = request.get_json() or {}
-    amount = data.get('amount')
+    if request.method == 'GET':
+        amount = request.args.get('amount')
+    else:
+        data = request.get_json(silent=True) or {}
+        amount = data.get('amount')
+
     promptpay_number = get_setting('promptpay_number', '0812345678')
     
     try:

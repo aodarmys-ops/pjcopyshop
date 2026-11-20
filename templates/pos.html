@@ -127,6 +127,7 @@
                     <div class="d-flex align-items-center gap-2">
                         <h3 class="fw-bold m-0">🛒 POS (หน้าร้าน)</h3>
                         <button type="button" class="btn btn-sm btn-outline-warning fw-bold rounded-pill shadow-sm ms-2" data-bs-toggle="modal" data-bs-target="#heldBillsModal" onclick="showHeldBills()">เรียกบิลที่พักไว้</button>
+                        <button type="button" class="btn btn-sm btn-outline-info fw-bold rounded-pill shadow-sm" onclick="openCustomerDisplayModal()" title="เปิดหน้าจอลูกค้า (จอที่ 2 หรือ iPad)">🖥️ จอลูกค้า (2 จอ / iPad)</button>
                     </div>
                     <a href="/" class="btn btn-outline-secondary rounded-circle p-2 shadow-sm" title="กลับหน้าหลัก"><span style="font-size: 1.25rem; line-height: 1; padding: 0 2px;">🏠</span></a>
                 </div>
@@ -293,7 +294,183 @@
         </div>
     </div>
 
+    <!-- Customer Display Options Modal -->
+    <div class="modal fade" id="customerDisplayModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0 rounded-4">
+                <div class="modal-header bg-light border-0 pb-2">
+                    <h5 class="modal-title fw-bold text-dark">🖥️ เชื่อมต่อหน้าจอลูกค้า (Customer Display)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4 text-center">
+                    <div class="row g-3">
+                        <!-- Option 1: Second Monitor on this PC -->
+                        <div class="col-12">
+                            <div class="p-3 border rounded-3 bg-light text-start d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="fw-bold text-dark fs-5">🖥️ จอคอมพิวเตอร์ที่ 2 (ต่อสาย)</div>
+                                    <small class="text-muted">สำหรับจอที่ต่อสาย HDMI/VGA เพิ่ม (กดปุ่มแล้วลากไปจอ 2)</small>
+                                </div>
+                                <button class="btn btn-primary fw-bold px-3 py-2 rounded-pill" onclick="openCustomerDisplayWindow()">
+                                    เปิดจอที่ 2
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Option 2: iPad / Tablet via Wi-Fi -->
+                        <div class="col-12">
+                            <div class="p-3 border rounded-3 text-start" style="background-color: #f8fafc;">
+                                <div class="fw-bold text-dark fs-5 mb-1">📱 ใช้ iPad / แท็บเล็ต (ไร้สาย)</div>
+                                <div class="text-muted small mb-3">ให้ iPad ต่อ Wi-Fi ร้าน แล้วเปิดกล้องสแกน QR Code ด้านล่างนี้:</div>
+                                
+                                <div class="text-center my-2">
+                                    <div id="ipadQRWrapper" class="p-2 bg-white d-inline-block rounded-3 shadow-sm border">
+                                        <img id="ipadDisplayQR" src="" alt="iPad Connection QR" style="width: 170px; height: 170px;">
+                                    </div>
+                                </div>
+                                
+                                <div class="text-center mt-2">
+                                    <small class="text-muted">หรือเปิด Safari บน iPad แล้วพิมพ์ที่อยู่:</small>
+                                    <div class="fw-bold text-primary font-monospace mt-1" id="ipadDisplayURL" style="font-size: 1.1rem; user-select: all;">
+                                        กำลังค้นหา IP...
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-info mt-3 mb-0 py-2 px-3 small border-0">
+                                    💡 <b>เคล็ดลับบน iPad:</b> เมื่อเปิดหน้าเว็บแล้ว ให้แตะปุ่ม <b>แชร์ (Share)</b> แล้วเลือก <b>"เพิ่มไปยังหน้าจอโฮม (Add to Home Screen)"</b> จะแสดงผลแบบเต็มจอเหมือนแอปจริง ไม่ติดแถบเว็บ!
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
+
+        // --- Customer Display Integration ---
+        let customerDisplayChannel = null;
+        let currentCustomerDisplayQR = null;
+        let qrSyncTimer = null;
+
+        try {
+            customerDisplayChannel = new BroadcastChannel('pj_pos_customer_display');
+            customerDisplayChannel.onmessage = (e) => {
+                if (e.data?.type === 'request_state') {
+                    broadcastCustomerDisplay();
+                }
+            };
+        } catch (e) {
+            console.warn('BroadcastChannel not supported');
+        }
+
+        let serverStatePostTimer = null;
+        async function openCustomerDisplayModal() {
+            try {
+                const res = await fetch('/api/customer-display/info');
+                if (res.ok) {
+                    const info = await res.json();
+                    const urlEl = document.getElementById('ipadDisplayURL');
+                    if (urlEl) urlEl.innerText = info.url;
+                    const qrEl = document.getElementById('ipadDisplayQR');
+                    if (qrEl && info.qr_image) qrEl.src = info.qr_image;
+                }
+            } catch (e) {
+                console.error("Error loading display info:", e);
+            }
+            new bootstrap.Modal(document.getElementById('customerDisplayModal')).show();
+        }
+
+        function openCustomerDisplayWindow() {
+            const w = 1200, h = 800;
+            const left = window.screen.width || 1920;
+            const win = window.open('/customer-display', 'CustomerDisplay', `width=${w},height=${h},left=${left},top=0`);
+            if (win) {
+                win.focus();
+                setTimeout(broadcastCustomerDisplay, 500);
+            }
+            const modalEl = document.getElementById('customerDisplayModal');
+            if (modalEl) {
+                bootstrap.Modal.getInstance(modalEl)?.hide();
+            }
+        }
+
+        function broadcastCustomerDisplay(extra = {}) {
+            try {
+                const subtotal = parseFloat(document.getElementById('subtotalDisplay')?.innerText.replace(/,/g, '') || 0);
+                const total = parseFloat(document.getElementById('totalAmount')?.innerText.replace(/,/g, '') || 0);
+                const manualDiscount = parseFloat(document.getElementById('discountInput')?.value || 0);
+                const totalDiscount = manualDiscount + (currentLoyaltyDiscount || 0) + (currentPromoDiscount || 0);
+                const method = document.getElementById('paymentMethod')?.value || 'Cash';
+
+                const displayItems = cart.map(i => ({
+                    name: i.name,
+                    qty: parseInt(i.qty) || 1,
+                    price: parseFloat(i.price) || 0,
+                    subtotal: (parseFloat(i.price) || 0) * (parseInt(i.qty) || 1)
+                }));
+
+                let qr = extra.qrImage !== undefined ? extra.qrImage : currentCustomerDisplayQR;
+                let status = extra.status || (cart.length > 0 ? (method === 'PromptPay' && qr ? 'paying' : 'cart') : 'idle');
+
+                const state = {
+                    items: displayItems,
+                    subtotal: subtotal,
+                    totalDiscount: totalDiscount,
+                    total: total,
+                    paymentMethod: method,
+                    qrImage: qr,
+                    status: status,
+                    timestamp: Date.now()
+                };
+
+                if (customerDisplayChannel) {
+                    customerDisplayChannel.postMessage(state);
+                }
+                localStorage.setItem('pj_pos_customer_display', JSON.stringify(state));
+
+                // Post to server for iPad / external devices
+                clearTimeout(serverStatePostTimer);
+                serverStatePostTimer = setTimeout(() => {
+                    fetch('/api/customer-display/state', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(state)
+                    }).catch(() => {});
+                }, 50);
+            } catch (e) {
+                console.error('broadcastCustomerDisplay error:', e);
+            }
+        }
+
+        function autoSyncCustomerQR() {
+            const method = document.getElementById('paymentMethod')?.value;
+            const total = parseFloat(document.getElementById('totalAmount')?.innerText.replace(/,/g, '') || 0);
+
+            if (method === 'PromptPay' && total > 0) {
+                clearTimeout(qrSyncTimer);
+                qrSyncTimer = setTimeout(async () => {
+                    try {
+                        const res = await fetch('/api/generate-qr', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ amount: total })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            currentCustomerDisplayQR = data.qr_image;
+                            broadcastCustomerDisplay({ qrImage: data.qr_image, status: 'paying' });
+                        }
+                    } catch (e) {}
+                }, 150);
+            } else if (method !== 'PromptPay' && method !== 'Split') {
+                currentCustomerDisplayQR = null;
+                broadcastCustomerDisplay();
+            } else {
+                broadcastCustomerDisplay();
+            }
+        }
 
         let cart = [];
         let allCustomers = [];
@@ -738,6 +915,8 @@
             const pointEligibleCups = totalRedeemedPoints > 0 ? 0 : earnedCups;
             const earnedPoints = pointEligibleCups * (loyaltyConfig.points_per_cup || 1);
             document.getElementById('pointsEarnedBox').innerText = `⭐ ได้รับ ${earnedPoints} แต้ม`;
+            
+            autoSyncCustomerQR();
         }
 
         function triggerEvaluatePromotions() {
@@ -875,6 +1054,7 @@
             } else {
                 if (qrBtn) qrBtn.classList.add('d-none');
             }
+            autoSyncCustomerQR();
         }
 
         async function generateQR() {
@@ -904,6 +1084,8 @@
                 });
                 const data = await res.json();
                 if (data.success) {
+                    currentCustomerDisplayQR = data.qr_image;
+                    broadcastCustomerDisplay({ qrImage: data.qr_image, status: 'paying' });
                     document.getElementById('qrCodeImg').src = data.qr_image;
                     new bootstrap.Modal(document.getElementById('qrCodeModal')).show();
                 } else {
@@ -981,6 +1163,7 @@
                 const data = await res.json();
 
                 if (res.ok) {
+                    broadcastCustomerDisplay({ status: 'completed' });
                     let msg = "";
                     if (isHold) {
                         msg = "✅ พักบิลสำเร็จ!\n(รายการถูกบันทึกไว้ชั่วคราว ยังไม่ตัดสต๊อก)";
@@ -1000,8 +1183,10 @@
                     appliedPromotions = [];
                     eligiblePromotions = [];
                     currentPromoDiscount = 0.0;
+                    currentCustomerDisplayQR = null;
                     renderCart();
                     renderPromotionsUI();
+                    setTimeout(() => broadcastCustomerDisplay({ status: 'idle' }), 3500);
                     document.getElementById('barcodeInput').value = '';
                     document.getElementById('discountInput').value = 0;
                     

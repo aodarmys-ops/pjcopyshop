@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Display - {{ shop_name }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --bg-hover: #334155;
+            --text-light: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-gold: #f59e0b;
+            --accent-green: #10b981;
+            --accent-blue: #38bdf8;
+            --border-color: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-light);
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Header */
+        .cfd-header {
+            background-color: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .shop-badge {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-gold);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .live-clock {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Main Grid */
+        .cfd-body {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1.6fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* Left Panel: Items Table / Welcome */
+        .cfd-panel {
+            background-color: var(--bg-card);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+
+        .panel-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .items-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            color: var(--text-light);
+        }
+
+        .items-table th {
+            background-color: #172033;
+            padding: 14px 20px;
+            font-weight: 500;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .items-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            font-size: 1.15rem;
+        }
+
+        .items-table tr:hover {
+            background-color: rgba(51, 65, 85, 0.3);
+        }
+
+        .item-row-new {
+            animation: highlightRow 1.2s ease-out;
+        }
+
+        @keyframes highlightRow {
+            0% { background-color: rgba(245, 158, 11, 0.35); }
+            100% { background-color: transparent; }
+        }
+
+        /* Welcome Idle Screen */
+        .welcome-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .welcome-icon {
+            font-size: 5rem;
+            margin-bottom: 20px;
+            animation: floatIcon 3s ease-in-out infinite;
+        }
+
+        @keyframes floatIcon {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Right Panel: Totals & QR Code */
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .total-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid var(--accent-gold);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(245, 158, 11, 0.15);
+        }
+
+        .total-title {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .total-amount {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: var(--accent-gold);
+            line-height: 1.1;
+            margin-bottom: 15px;
+            letter-spacing: -1px;
+        }
+
+        .breakdown-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1rem;
+            padding: 4px 0;
+            color: var(--text-muted);
+        }
+
+        .breakdown-row.discount {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        /* Payment Area / QR Code Display */
+        .payment-card {
+            flex: 1;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+
+        .qr-wrapper {
+            background: white;
+            padding: 14px;
+            border-radius: 18px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            margin-bottom: 14px;
+            display: inline-block;
+        }
+
+        .qr-image {
+            width: 210px;
+            height: 210px;
+            display: block;
+            object-fit: contain;
+        }
+
+        .qr-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-light);
+            margin-bottom: 6px;
+        }
+
+        .qr-subtitle {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+        }
+
+        /* Success Card */
+        .success-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .success-icon {
+            font-size: 4.5rem;
+            color: var(--accent-green);
+            margin-bottom: 15px;
+        }
+
+        /* Bottom Status Footer */
+        .cfd-footer {
+            background-color: #090e17;
+            padding: 8px 24px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #1e293b;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-green);
+            display: inline-block;
+            margin-right: 6px;
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .btn-fullscreen {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-fullscreen:hover {
+            color: white;
+            border-color: var(--accent-gold);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="cfd-header">
+        <div class="shop-badge">
+            <span>🖨️</span>
+            <span>{{ shop_name }}</span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <div id="liveClock" class="live-clock">--:--:--</div>
+            <button class="btn-fullscreen" onclick="toggleFullScreen()" title="ขยายเต็มหน้าจอ (F11)">⛶ เต็มจอ</button>
+        </div>
+    </header>
+
+    <!-- Body -->
+    <div class="cfd-body">
+        
+        <!-- Left Column: Items Table / Welcome View -->
+        <div class="cfd-panel">
+            <div class="panel-header">
+                <div>
+                    <span>🛒 รายการสินค้า</span>
+                    <span id="itemsCountBadge" class="badge bg-secondary ms-2" style="font-size: 0.9rem;">0 รายการ</span>
+                </div>
+                <div class="text-muted" style="font-size: 0.95rem;">
+                    PJ Copy Shop POS
+                </div>
+            </div>
+
+            <!-- Welcome Screen (When Cart is Empty) -->
+            <div id="welcomeView" class="welcome-view">
+                <div class="welcome-icon">✨</div>
+                <h2 class="fw-bold mb-2 text-warning">ยินดีต้อนรับสู่ {{ shop_name }}</h2>
+                <p class="text-muted fs-5 mb-4">บริการถ่ายเอกสาร ปริ้นงาน เข้าเล่ม เคลือบบัตร และเครื่องดื่ม</p>
+                <div class="p-3 px-4 rounded-pill border border-secondary border-opacity-50 text-white-50 small">
+                    แคชเชียร์พร้อมให้บริการ กรุณารอสักครู่...
+                </div>
+            </div>
+
+            <!-- Items Table (When Cart has Items) -->
+            <div id="itemsContainer" class="items-container d-none">
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;" class="text-center">#</th>
+                            <th>รายการ</th>
+                            <th style="width: 90px;" class="text-center">จำนวน</th>
+                            <th style="width: 120px;" class="text-end">ราคา/หน่วย</th>
+                            <th style="width: 140px;" class="text-end">รวม</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsTableBody">
+                        <!-- Populated dynamically via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right Column: Grand Total & Payment/QR -->
+        <div class="right-column">
+            
+            <!-- Grand Total Card -->
+            <div class="total-card">
+                <div class="total-title">ยอดรวมสุทธิ (Total Amount)</div>
+                <div class="total-amount" id="displayTotal">฿ 0.00</div>
+                
+                <div class="border-top border-secondary border-opacity-25 pt-2">
+                    <div class="breakdown-row">
+                        <span>ยอดรวมสินค้า:</span>
+                        <span id="displaySubtotal" class="fw-bold text-light">฿ 0.00</span>
+                    </div>
+                    <div class="breakdown-row discount d-none" id="discountRow">
+                        <span>ส่วนลดรวม:</span>
+                        <span id="displayDiscount">-฿ 0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment / Dynamic QR Box -->
+            <div class="payment-card" id="paymentCard">
+                
+                <!-- State 1: Idle (Waiting for Cashier) -->
+                <div id="paymentIdleState" class="text-center">
+                    <div style="font-size: 3rem; margin-bottom: 10px;">💳</div>
+                    <h5 class="fw-bold text-white mb-1">ช่องทางชำระเงิน</h5>
+                    <p class="text-muted small mb-0">รองรับเงินสด และสแกนจ่ายพร้อมเพย์ (QR Code)</p>
+                </div>
+
+                <!-- State 2: QR Code PromptPay Display -->
+                <div id="paymentQRState" class="text-center d-none">
+                    <div class="qr-title">📱 สแกนจ่ายผ่าน PromptPay</div>
+                    <div class="qr-subtitle mb-2">ยอดเงินระบุให้แล้ว สแกนผ่านแอปธนาคารได้ทันที</div>
+                    
+                    <div class="qr-wrapper">
+                        <img id="qrDisplayImg" src="" alt="PromptPay QR Code" class="qr-image">
+                    </div>
+                    
+                    <div class="badge bg-warning text-dark px-3 py-2 fs-6 fw-bold shadow-sm">
+                        ยอดชำระ: <span id="qrAmountDisplay">0.00</span> บาท
+                    </div>
+                </div>
+
+                <!-- State 3: Cash Payment Mode -->
+                <div id="paymentCashState" class="text-center d-none">
+                    <div style="font-size: 3.5rem; margin-bottom: 10px;">💵</div>
+                    <h4 class="fw-bold text-warning mb-2">ชำระด้วยเงินสด</h4>
+                    <p class="text-light fs-5 mb-0">กรุณาชำระเงินที่เคาน์เตอร์แคชเชียร์</p>
+                </div>
+
+                <!-- State 4: Completed Thank You -->
+                <div id="paymentCompleteState" class="success-overlay d-none">
+                    <div class="success-icon">✅</div>
+                    <h3 class="fw-bold text-success mb-2">ชำระเงินสำเร็จแล้ว</h3>
+                    <p class="text-light fs-5 mb-0">ขอบคุณที่ใช้บริการ {{ shop_name }} ค่ะ/ครับ</p>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="cfd-footer">
+        <div>
+            <span class="status-dot"></span>
+            <span id="connStatus">เชื่อมต่อกับระบบ POS สำเร็จ</span>
+        </div>
+        <div>
+            <span>ระบบบริการลูกค้า {{ shop_name }}</span>
+        </div>
+    </footer>
+
+    <script>
+        // Number formatter
+        function formatMoney(num) {
+            return Number(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Live Clock
+        function updateClock() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+            const timeStr = now.toLocaleTimeString('th-TH', { hour12: false });
+            document.getElementById('liveClock').innerText = `${dateStr} | ${timeStr}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Fullscreen Toggle
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            }
+        }
+
+        // State & DOM Elements
+        const welcomeView = document.getElementById('welcomeView');
+        const itemsContainer = document.getElementById('itemsContainer');
+        const itemsTableBody = document.getElementById('itemsTableBody');
+        const itemsCountBadge = document.getElementById('itemsCountBadge');
+
+        const displayTotal = document.getElementById('displayTotal');
+        const displaySubtotal = document.getElementById('displaySubtotal');
+        const displayDiscount = document.getElementById('displayDiscount');
+        const discountRow = document.getElementById('discountRow');
+
+        const paymentIdleState = document.getElementById('paymentIdleState');
+        const paymentQRState = document.getElementById('paymentQRState');
+        const paymentCashState = document.getElementById('paymentCashState');
+        const paymentCompleteState = document.getElementById('paymentCompleteState');
+        const qrDisplayImg = document.getElementById('qrDisplayImg');
+        const qrAmountDisplay = document.getElementById('qrAmountDisplay');
+
+        let previousItemsCount = 0;
+
+        function setPaymentView(view) {
+            paymentIdleState.classList.add('d-none');
+            paymentQRState.classList.add('d-none');
+            paymentCashState.classList.add('d-none');
+            paymentCompleteState.classList.add('d-none');
+
+            if (view === 'qr') paymentQRState.classList.remove('d-none');
+            else if (view === 'cash') paymentCashState.classList.remove('d-none');
+            else if (view === 'completed') paymentCompleteState.classList.remove('d-none');
+            else paymentIdleState.classList.remove('d-none');
+        }
+
+        function updateCustomerDisplay(data) {
+            if (!data) return;
+
+            const items = data.items || [];
+            const subtotal = data.subtotal || 0;
+            const total = data.total || 0;
+            const totalDiscount = data.totalDiscount || 0;
+            const status = data.status || 'idle';
+            const qrImage = data.qrImage || null;
+            const paymentMethod = data.paymentMethod || 'Cash';
+
+            // 1. Update Totals
+            displayTotal.innerText = `฿ ${formatMoney(total)}`;
+            displaySubtotal.innerText = `฿ ${formatMoney(subtotal)}`;
+            
+            if (totalDiscount > 0) {
+                discountRow.classList.remove('d-none');
+                displayDiscount.innerText = `-฿ ${formatMoney(totalDiscount)}`;
+            } else {
+                discountRow.classList.add('d-none');
+            }
+
+            // 2. Update Items Table
+            if (items.length === 0 && status !== 'completed') {
+                welcomeView.classList.remove('d-none');
+                itemsContainer.classList.add('d-none');
+                itemsCountBadge.innerText = '0 รายการ';
+                previousItemsCount = 0;
+            } else {
+                welcomeView.classList.add('d-none');
+                itemsContainer.classList.remove('d-none');
+                itemsCountBadge.innerText = `${items.length} รายการ`;
+
+                let html = '';
+                items.forEach((item, index) => {
+                    const isNew = (index === items.length - 1 && items.length > previousItemsCount);
+                    html += `
+                        <tr class="${isNew ? 'item-row-new' : ''}">
+                            <td class="text-center text-muted">${index + 1}</td>
+                            <td class="fw-bold">${escapeHTML(item.name || '')}</td>
+                            <td class="text-center"><span class="badge bg-secondary px-2 py-1 fs-6">${item.qty}</span></td>
+                            <td class="text-end text-muted">${formatMoney(item.price)}</td>
+                            <td class="text-end fw-bold text-warning">${formatMoney(item.subtotal)}</td>
+                        </tr>
+                    `;
+                });
+                itemsTableBody.innerHTML = html;
+                previousItemsCount = items.length;
+
+                // Auto-scroll to bottom of table
+                itemsContainer.scrollTop = itemsContainer.scrollHeight;
+            }
+
+            // 3. Update Payment / QR State
+            if (status === 'completed') {
+                setPaymentView('completed');
+            } else if (qrImage) {
+                qrDisplayImg.src = qrImage;
+                qrAmountDisplay.innerText = formatMoney(total);
+                setPaymentView('qr');
+            } else if (status === 'paying' || paymentMethod === 'PromptPay') {
+                if (qrImage) {
+                    setPaymentView('qr');
+                } else {
+                    setPaymentView('idle');
+                }
+            } else if (paymentMethod === 'Cash' && items.length > 0) {
+                setPaymentView('cash');
+            } else {
+                setPaymentView('idle');
+            }
+        }
+
+        function escapeHTML(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // --- Cross-Window Communication (BroadcastChannel + LocalStorage + Server Polling for iPad) ---
+        let lastServerTimestamp = 0;
+        let isPolling = false;
+
+        async function pollServerState() {
+            if (isPolling) return;
+            isPolling = true;
+            try {
+                const res = await fetch('/api/customer-display/state', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.timestamp && data.timestamp > lastServerTimestamp) {
+                        lastServerTimestamp = data.timestamp;
+                        updateCustomerDisplay(data);
+                    }
+                }
+            } catch (e) {
+            } finally {
+                isPolling = false;
+            }
+        }
+
+        // Poll every 500ms so iPad / external tablets sync in real-time over Wi-Fi
+        setInterval(pollServerState, 500);
+
+        let channel = null;
+        try {
+            channel = new BroadcastChannel('pj_pos_customer_display');
+            channel.onmessage = (event) => {
+                if (event.data) {
+                    if (event.data.timestamp) {
+                        lastServerTimestamp = Math.max(lastServerTimestamp, event.data.timestamp);
+                    }
+                    updateCustomerDisplay(event.data);
+                }
+            };
+        } catch (e) {
+            console.warn('BroadcastChannel not supported, falling back to localStorage');
+        }
+
+        // LocalStorage fallback
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'pj_pos_customer_display' && event.newValue) {
+                try {
+                    const data = JSON.parse(event.newValue);
+                    if (data.timestamp) {
+                        lastServerTimestamp = Math.max(lastServerTimestamp, data.timestamp);
+                    }
+                    updateCustomerDisplay(data);
+                } catch (e) {}
+            }
+        });
+
+        // Request initial state from POS on startup
+        window.addEventListener('load', () => {
+            pollServerState();
+
+            // Read cached state from localStorage if exists
+            const cached = localStorage.getItem('pj_pos_customer_display');
+            if (cached) {
+                try {
+                    updateCustomerDisplay(JSON.parse(cached));
+                } catch (e) {}
+            }
+
+            // Ask POS tab to send fresh state
+            if (channel) {
+                channel.postMessage({ type: 'request_state' });
+            }
+        });
+    </script>
+</body>
+</html>
+
